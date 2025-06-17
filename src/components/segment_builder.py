@@ -1,6 +1,6 @@
 import streamlit as st
 import streamlit.components.v1 as components
-from src.database.queries import get_segment_statistics, save_segment
+from src.database.queries import get_segment_statistics, save_segment, load_saved_segments
 import plotly.graph_objects as go
 from datetime import datetime
 import uuid
@@ -824,11 +824,17 @@ def validate_and_save_segment():
             # Force clear any cached data
             if hasattr(st, '_clear_cache'):
                 st._clear_cache()
-            
+
             # Add success flag to session state
             st.session_state.segment_saved = True
             st.session_state.last_saved_segment = segment_def.get('name')
-            
+
+            # Refresh sidebar segment list from the database
+            try:
+                st.session_state.db_segments = load_saved_segments()
+            except Exception:
+                st.session_state.db_segments = []
+
             return True
         else:
             st.error(f"Failed to save segment: {message}")

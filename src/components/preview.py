@@ -325,9 +325,11 @@ def render_preview():
         show_sample_data()
     else:
         # Check if specific segment was selected
+        segment_options = ["Current Segment"] + [s.get('name', 'Unnamed') for s in st.session_state.get('db_segments', [])]
         selected_segment = st.selectbox(
             "Select Segment to Preview",
-            options=["Current Segment"] + [s.get('name', 'Unnamed') for s in st.session_state.get('db_segments', [])],
+            options=segment_options,
+            index=segment_options.index(st.session_state.get('preview_segment_selector', 'Current Segment')),
             key="preview_segment_selector"
         )
         

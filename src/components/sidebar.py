@@ -1,5 +1,6 @@
 import streamlit as st
 import uuid
+from src.database.queries import load_saved_segments
 
 def render_sidebar(config):
     """Render the sidebar with enhanced UI and better functionality"""
@@ -248,7 +249,14 @@ def render_sidebar(config):
         background-color: #FFFFFF !important;
     }
     </style>
+
     """, unsafe_allow_html=True)
+
+    # Load segments from the database so they are available in the sidebar
+    try:
+        st.session_state.db_segments = load_saved_segments()
+    except Exception:
+        st.session_state.db_segments = []
     
     # Search functionality - WORKING
     search_query = st.text_input(
@@ -562,7 +570,8 @@ def add_segment_to_builder(segment):
         
         # Update session state
         st.session_state.segment_definition = new_definition
-        # Clear preview data to force regeneration
+        # Reset preview selector and clear cached data
+        st.session_state.preview_segment_selector = "Current Segment"
         st.session_state.preview_data = None
         st.success(f"✅ Loaded segment: {segment['name']}")
         # Force rerun
