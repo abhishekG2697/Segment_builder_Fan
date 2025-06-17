@@ -31,90 +31,81 @@ def render_react_segment_builder(config, segment_definition):
                 'dataType': item.get('type', 'number')
             })
     
-    # Pre-built segments with complete definitions
-    segments = [
-        {
-            'id': 'seg_high_value',
+    # Fallback definitions for some sample segments
+    fallback_definitions = {
+        'High Value Customers': {
             'name': 'High Value Customers',
             'description': 'Visitors with revenue > $500',
             'container_type': 'visitor',
-            'definition': {
-                'name': 'High Value Customers',
-                'description': 'Visitors with revenue > $500',
-                'container_type': 'visitor',
-                'containers': [{
-                    'id': 'container_hv_1',
-                    'type': 'visitor',
-                    'include': True,
-                    'conditions': [{
-                        'id': 'cond_rev_1',
-                        'field': 'revenue',
-                        'name': 'Revenue',
-                        'type': 'metric',
-                        'operator': 'is greater than',
-                        'value': 500,
-                        'data_type': 'number'
-                    }],
-                    'logic': 'and'
+            'containers': [{
+                'id': 'container_hv_1',
+                'type': 'visitor',
+                'include': True,
+                'conditions': [{
+                    'id': 'cond_rev_1',
+                    'field': 'revenue',
+                    'name': 'Revenue',
+                    'type': 'metric',
+                    'operator': 'is greater than',
+                    'value': 500,
+                    'data_type': 'number'
                 }],
                 'logic': 'and'
-            }
+            }],
+            'logic': 'and'
         },
-        {
-            'id': 'seg_mobile',
+        'Mobile Users': {
             'name': 'Mobile Users',
             'description': 'All mobile device traffic',
             'container_type': 'hit',
-            'definition': {
-                'name': 'Mobile Users',
-                'description': 'All mobile device traffic',
-                'container_type': 'hit',
-                'containers': [{
-                    'id': 'container_mob_1',
-                    'type': 'hit',
-                    'include': True,
-                    'conditions': [{
-                        'id': 'cond_dev_1',
-                        'field': 'device_type',
-                        'name': 'Device Type',
-                        'type': 'dimension',
-                        'operator': 'equals',
-                        'value': 'Mobile',
-                        'data_type': 'string'
-                    }],
-                    'logic': 'and'
+            'containers': [{
+                'id': 'container_mob_1',
+                'type': 'hit',
+                'include': True,
+                'conditions': [{
+                    'id': 'cond_dev_1',
+                    'field': 'device_type',
+                    'name': 'Device Type',
+                    'type': 'dimension',
+                    'operator': 'equals',
+                    'value': 'Mobile',
+                    'data_type': 'string'
                 }],
                 'logic': 'and'
-            }
+            }],
+            'logic': 'and'
         },
-        {
-            'id': 'seg_engaged',
+        'Engaged Sessions': {
             'name': 'Engaged Sessions',
             'description': 'Sessions with 5+ page views',
             'container_type': 'visit',
-            'definition': {
-                'name': 'Engaged Sessions',
-                'description': 'Sessions with 5+ page views',
-                'container_type': 'visit',
-                'containers': [{
-                    'id': 'container_eng_1',
-                    'type': 'visit',
-                    'include': True,
-                    'conditions': [{
-                        'id': 'cond_pv_1',
-                        'field': 'page_views',
-                        'name': 'Page Views',
-                        'type': 'metric',
-                        'operator': 'is greater than or equal to',
-                        'value': 5,
-                        'data_type': 'number'
-                    }],
-                    'logic': 'and'
+            'containers': [{
+                'id': 'container_eng_1',
+                'type': 'visit',
+                'include': True,
+                'conditions': [{
+                    'id': 'cond_pv_1',
+                    'field': 'page_views',
+                    'name': 'Page Views',
+                    'type': 'metric',
+                    'operator': 'is greater than or equal to',
+                    'value': 5,
+                    'data_type': 'number'
                 }],
                 'logic': 'and'
-            }
+            }],
+            'logic': 'and'
         }
-    ]
+    }
+
+    segments = list(config.get('segments', []))
+    for seg in st.session_state.get('db_segments', []):
+        if not any(s.get('name') == seg.get('name') for s in segments):
+            segments.append(seg)
+
+    for seg in segments:
+        if 'definition' not in seg and seg.get('name') in fallback_definitions:
+            seg['definition'] = fallback_definitions[seg['name']]
     
     # Current segment definition
     current_segment = json.dumps(segment_definition)
