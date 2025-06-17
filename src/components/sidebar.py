@@ -1,5 +1,6 @@
 import streamlit as st
 import uuid
+from src.database.queries import load_saved_segments
 
 def render_sidebar(config):
     """Render the sidebar with enhanced UI and better functionality"""
@@ -248,7 +249,14 @@ def render_sidebar(config):
         background-color: #FFFFFF !important;
     }
     </style>
+
     """, unsafe_allow_html=True)
+
+    # Load segments from the database so they are available in the sidebar
+    try:
+        st.session_state.db_segments = load_saved_segments()
+    except Exception:
+        st.session_state.db_segments = []
     
     # Search functionality - WORKING
     search_query = st.text_input(
