@@ -123,27 +123,26 @@ def validate_condition(condition, container_idx, condition_idx):
     return errors
 
 def validate_container_hierarchy(segment_definition):
-    """Validate container hierarchy rules - ENHANCED VERSION"""
+    """Validate container hierarchy rules including nested levels"""
     errors = []
-    
+
     if not segment_definition:
         return errors
-    
-    # Get main container type
-    main_type = segment_definition.get('container_type', 'hit')
+
     container_levels = {'hit': 1, 'visit': 2, 'visitor': 3}
-    main_level = container_levels.get(main_type, 1)
-    
-    # Check nested containers
-    containers = segment_definition.get('containers', [])
-    for idx, container in enumerate(containers):
-        container_type = container.get('type', 'hit')
-        container_level = container_levels.get(container_type, 1)
-        
-        # A container cannot contain a higher-level container
-        if container_level > main_level:
-            errors.append(f"Container {idx + 1}: A {main_type} segment cannot contain a {container_type} container")
-    
+    main_level = container_levels.get(segment_definition.get('container_type', 'hit'), 1)
+
+    def _check(cont, parent_level, path):
+        c_type = cont.get('type', 'hit')
+        level = container_levels.get(c_type, 1)
+        if level > parent_level:
+            errors.append(f"Container {path}: Cannot nest {c_type} inside level {parent_level}")
+        for idx, child in enumerate(cont.get('children', [])):
+            _check(child, level, f"{path}.{idx+1}")
+
+    for idx, container in enumerate(segment_definition.get('containers', [])):
+        _check(container, main_level, str(idx + 1))
+
     return errors
 
 def sanitize_segment_name(name):
