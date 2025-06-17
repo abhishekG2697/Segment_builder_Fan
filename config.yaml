@@ -99,8 +99,7 @@ metrics:
         field: "bounce_rate"
         table: "hits"
         type: "number"
-        aggregation: "avg"
-        unit: "%"
+        aggregation: "sum"
 
   - category: "Commerce"
     items:
@@ -134,7 +133,7 @@ segments:
     description: "All mobile device traffic"
     container_type: "hit"
   - name: "Engaged Sessions"
-    description: "Sessions with 5+ page views"
+    description: "Sessions with 5+ pages viewed"
     container_type: "visit"
 
 operators:
