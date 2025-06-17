@@ -545,7 +545,7 @@ def get_saved_segments():
                     'include': True,
                     'conditions': [{
                         'id': 'cond_pv_1',
-                        'field': 'total_hits',
+                        'field': 'page_views',
                         'name': 'Page Views',
                         'type': 'metric',
                         'category': 'Engagement',
