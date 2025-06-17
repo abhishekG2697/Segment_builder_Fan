@@ -54,8 +54,10 @@ def build_container_sql(container, main_container_type):
     # Build condition SQL
     condition_sqls = []
     
+    alias = 'h' if container_type == 'hit' else None
+
     for condition in conditions:
-        condition_sql = build_condition_sql(condition)
+        condition_sql = build_condition_sql(condition, alias=alias)
         if condition_sql:
             condition_sqls.append(condition_sql)
     
@@ -99,8 +101,16 @@ def build_container_sql(container, main_container_type):
     
     return base_query
 
-def build_condition_sql(condition):
-    """Build SQL for a single condition - ENHANCED VERSION"""
+def build_condition_sql(condition, alias=None):
+    """Build SQL for a single condition - ENHANCED VERSION
+
+    Parameters
+    ----------
+    condition : dict
+        Condition definition.
+    alias : str or None
+        Optional table alias to prefix field references with.
+    """
     
     field = condition.get('field')
     operator = condition.get('operator', 'equals')
@@ -111,10 +121,12 @@ def build_condition_sql(condition):
         return None
     
     # Handle exists/does not exist operators
+    field_ref = f"{alias}.{field}" if alias else field
+
     if operator == 'exists':
-        return f"h.{field} IS NOT NULL"
+        return f"{field_ref} IS NOT NULL"
     elif operator == 'does not exist':
-        return f"h.{field} IS NULL"
+        return f"{field_ref} IS NULL"
     
     # For other operators, value is required
     if value is None or str(value).strip() == '':
@@ -128,25 +140,25 @@ def build_condition_sql(condition):
         try:
             numeric_value = float(clean_value)
             if operator == 'equals':
-                return f"h.{field} = {numeric_value}"
+                return f"{field_ref} = {numeric_value}"
             elif operator == 'does not equal':
-                return f"h.{field} != {numeric_value}"
+                return f"{field_ref} != {numeric_value}"
             elif operator == 'is greater than':
-                return f"h.{field} > {numeric_value}"
+                return f"{field_ref} > {numeric_value}"
             elif operator == 'is greater than or equal to':
-                return f"h.{field} >= {numeric_value}"
+                return f"{field_ref} >= {numeric_value}"
             elif operator == 'is less than':
-                return f"h.{field} < {numeric_value}"
+                return f"{field_ref} < {numeric_value}"
             elif operator == 'is less than or equal to':
-                return f"h.{field} <= {numeric_value}"
+                return f"{field_ref} <= {numeric_value}"
             elif operator == 'is between':
                 # Handle between operator
                 value2 = condition.get('value2')
                 if value2 is not None:
                     numeric_value2 = float(value2)
-                    return f"h.{field} BETWEEN {numeric_value} AND {numeric_value2}"
+                    return f"{field_ref} BETWEEN {numeric_value} AND {numeric_value2}"
                 else:
-                    return f"h.{field} = {numeric_value}"
+                    return f"{field_ref} = {numeric_value}"
         except (ValueError, TypeError):
             # If not a valid number, treat as string
             data_type = 'string'
@@ -155,22 +167,22 @@ def build_condition_sql(condition):
     if data_type == 'string':
         # Escape single quotes in value
         escaped_value = clean_value.replace("'", "''")
-        
+
         if operator == 'equals':
-            return f"h.{field} = '{escaped_value}'"
+            return f"{field_ref} = '{escaped_value}'"
         elif operator == 'does not equal':
-            return f"h.{field} != '{escaped_value}'"
+            return f"{field_ref} != '{escaped_value}'"
         elif operator == 'contains':
-            return f"h.{field} LIKE '%{escaped_value}%'"
+            return f"{field_ref} LIKE '%{escaped_value}%'"
         elif operator == 'does not contain':
-            return f"h.{field} NOT LIKE '%{escaped_value}%'"
+            return f"{field_ref} NOT LIKE '%{escaped_value}%'"
         elif operator == 'starts with':
-            return f"h.{field} LIKE '{escaped_value}%'"
+            return f"{field_ref} LIKE '{escaped_value}%'"
         elif operator == 'ends with':
-            return f"h.{field} LIKE '%{escaped_value}'"
+            return f"{field_ref} LIKE '%{escaped_value}'"
         else:
             # Default to equals for unknown operators
-            return f"h.{field} = '{escaped_value}'"
+            return f"{field_ref} = '{escaped_value}'"
     
     return None
 

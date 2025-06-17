@@ -293,6 +293,9 @@ def init_session_state():
     
     if 'preview_data' not in st.session_state:
         st.session_state.preview_data = None
+
+    if 'preview_segment_selector' not in st.session_state:
+        st.session_state.preview_segment_selector = "Current Segment"
     
     if 'saved_segments' not in st.session_state:
         st.session_state.saved_segments = []

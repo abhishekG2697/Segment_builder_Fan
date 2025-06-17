@@ -570,7 +570,8 @@ def add_segment_to_builder(segment):
         
         # Update session state
         st.session_state.segment_definition = new_definition
-        # Clear preview data to force regeneration
+        # Reset preview selector and clear cached data
+        st.session_state.preview_segment_selector = "Current Segment"
         st.session_state.preview_data = None
         st.success(f"✅ Loaded segment: {segment['name']}")
         # Force rerun
