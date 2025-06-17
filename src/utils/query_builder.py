@@ -52,7 +52,7 @@ def build_sql_from_segment(segment_definition):
     required_joins = set()
     
     for container in containers:
-        container_sql, joins = build_container_sql(container, container_type)
+        container_sql, joins = build_container_sql(container, container_type, 0)
         if container_sql:
             container_queries.append(container_sql)
             required_joins.update(joins)
@@ -83,8 +83,8 @@ def build_sql_from_segment(segment_definition):
     
     return main_query
 
-def build_container_sql(container, main_container_type):
-    """Build SQL for a single container - IMPROVED VERSION"""
+def build_container_sql(container, main_container_type, level=0):
+    """Build SQL for a single container, supporting nested children"""
     
     conditions = container.get('conditions', [])
     children = container.get('children', [])
@@ -111,7 +111,7 @@ def build_container_sql(container, main_container_type):
             used_tables.add(table)
 
     for child in children:
-        child_sql, child_tables = build_container_sql(child, container_type)
+        child_sql, child_tables = build_container_sql(child, container_type, level + 1)
         if child_sql:
             condition_sqls.append(child_sql)
             used_tables.update(child_tables)
