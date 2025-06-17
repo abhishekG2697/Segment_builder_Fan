@@ -77,7 +77,7 @@ def render_react_segment_builder(config, segment_definition):
         },
         'Engaged Sessions': {
             'name': 'Engaged Sessions',
-            'description': 'Sessions with 5+ page views',
+        'description': 'Sessions with 5+ pages viewed',
             'container_type': 'visit',
             'containers': [{
                 'id': 'container_eng_1',
@@ -85,8 +85,8 @@ def render_react_segment_builder(config, segment_definition):
                 'include': True,
                 'conditions': [{
                     'id': 'cond_pv_1',
-                    'field': 'page_views',
-                    'name': 'Page Views',
+                    'field': 'pages_viewed',
+                    'name': 'Pages Viewed',
                     'type': 'metric',
                     'operator': 'is greater than or equal to',
                     'value': 5,
