@@ -1064,6 +1064,7 @@ def render_react_segment_builder(config, segment_definition):
                 segment_data = json.loads(match.group(1))
                 st.session_state.segment_definition = segment_data
                 st.session_state.preview_data = None  # Clear preview to force regeneration
+                st.session_state.last_preview_segment = None
         except:
             pass
     

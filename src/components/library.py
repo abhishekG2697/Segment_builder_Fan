@@ -656,6 +656,7 @@ def load_segment_to_builder(segment):
         # Reset preview selector and clear preview data
         st.session_state.preview_segment_selector = "Current Segment"
         st.session_state.preview_data = None
+        st.session_state.last_preview_segment = None
         
         # Switch to builder tab
         st.session_state.active_tab = 0
@@ -685,7 +686,8 @@ def load_segment_and_preview(segment):
         # Reset preview selector and clear preview data
         st.session_state.preview_segment_selector = "Current Segment"
         st.session_state.preview_data = None
-        
+        st.session_state.last_preview_segment = None
+
         # Switch to preview tab
         st.session_state.active_tab = 1
         
