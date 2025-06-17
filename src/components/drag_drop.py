@@ -217,8 +217,8 @@ def render_drag_drop_builder():
                     <div class="draggable-item metric-item" draggable="true" data-type="metric" data-field="revenue" data-name="Revenue">
                         <span>💰</span> Revenue
                     </div>
-                    <div class="draggable-item metric-item" draggable="true" data-type="metric" data-field="page_views" data-name="Page Views">
-                        <span>👁️</span> Page Views
+                    <div class="draggable-item metric-item" draggable="true" data-type="metric" data-field="pages_viewed" data-name="Pages Viewed">
+                        <span>👁️</span> Pages Viewed
                     </div>
                     <div class="draggable-item metric-item" draggable="true" data-type="metric" data-field="time_on_page" data-name="Time on Page">
                         <span>⏱️</span> Time on Page

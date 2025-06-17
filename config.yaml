@@ -71,8 +71,8 @@ dimensions:
 metrics:
   - category: "Engagement"
     items:
-      - name: "Page Views"
-        field: "page_views"
+      - name: "Pages Viewed"
+        field: "pages_viewed"
         type: "number"
         aggregation: "sum"
       - name: "Time on Page"
@@ -80,11 +80,10 @@ metrics:
         type: "number"
         aggregation: "avg"
         unit: "seconds"
-      - name: "Bounce Rate"
-        field: "bounce_rate"
+      - name: "Bounces"
+        field: "bounce"
         type: "number"
-        aggregation: "avg"
-        unit: "%"
+        aggregation: "sum"
 
   - category: "Commerce"
     items:
@@ -93,8 +92,8 @@ metrics:
         type: "number"
         aggregation: "sum"
         unit: "$"
-      - name: "Orders"
-        field: "orders"
+      - name: "Total Orders"
+        field: "total_orders"
         type: "number"
         aggregation: "sum"
       - name: "Products Viewed"
@@ -114,7 +113,7 @@ segments:
     description: "All mobile device traffic"
     container_type: "hit"
   - name: "Engaged Sessions"
-    description: "Sessions with 5+ page views"
+    description: "Sessions with 5+ pages viewed"
     container_type: "visit"
 
 operators:

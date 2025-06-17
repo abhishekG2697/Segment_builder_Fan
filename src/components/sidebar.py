@@ -322,7 +322,7 @@ def render_sidebar(config):
         },
         'Engaged Sessions': {
             'name': 'Engaged Sessions',
-            'description': 'Sessions with 5+ page views',
+            'description': 'Sessions with 5+ pages viewed',
             'container_type': 'visit',
             'containers': [{
                 'id': 'container_engaged_1',
@@ -330,8 +330,8 @@ def render_sidebar(config):
                 'include': True,
                 'conditions': [{
                     'id': 'cond_pageviews_1',
-                    'field': 'page_views',  # Fixed field mapping
-                    'name': 'Page Views',
+                    'field': 'pages_viewed',
+                    'name': 'Pages Viewed',
                     'type': 'metric',
                     'category': 'Engagement',
                     'operator': 'is greater than or equal to',
