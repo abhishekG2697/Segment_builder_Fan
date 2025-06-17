@@ -28,6 +28,14 @@ FIELD_TABLE_MAP.setdefault("pages_viewed", "sessions")
 FIELD_TABLE_MAP.setdefault("total_orders", "users")
 FIELD_TABLE_MAP.setdefault("total_sessions", "users")
 
+
+def iter_all_containers(cont_list):
+    """Yield containers recursively"""
+    for c in cont_list:
+        yield c
+        if c.get('children'):
+            yield from iter_all_containers(c['children'])
+
 def build_sql_from_segment(segment_definition):
     """Build SQL query from segment definition - FIXED VERSION"""
     
@@ -79,7 +87,8 @@ def build_container_sql(container, main_container_type):
     """Build SQL for a single container - IMPROVED VERSION"""
     
     conditions = container.get('conditions', [])
-    if not conditions:
+    children = container.get('children', [])
+    if not conditions and not children:
         return None, set()
     
     container_type = container.get('type', main_container_type)
@@ -100,6 +109,12 @@ def build_container_sql(container, main_container_type):
         if condition_sql:
             condition_sqls.append(condition_sql)
             used_tables.add(table)
+
+    for child in children:
+        child_sql, child_tables = build_container_sql(child, container_type)
+        if child_sql:
+            condition_sqls.append(child_sql)
+            used_tables.update(child_tables)
     
     if not condition_sqls:
         return None, set()
@@ -287,19 +302,18 @@ def convert_to_query_builder_format(segment_definition):
         'containers': []
     }
     
-    # Process containers
-    for container in segment_definition.get('containers', []):
-        container_data = {
-            'id': container.get('id', ''),
-            'type': container.get('type', 'hit'),
-            'include': container.get('include', True),
-            'logic': container.get('logic', 'and'),
-            'conditions': []
+    def process_container(cont):
+        c_data = {
+            'id': cont.get('id', ''),
+            'type': cont.get('type', 'hit'),
+            'include': cont.get('include', True),
+            'logic': cont.get('logic', 'and'),
+            'conditions': [],
+            'children': []
         }
-        
-        # Process conditions
-        for condition in container.get('conditions', []):
-            condition_data = {
+
+        for condition in cont.get('conditions', []):
+            c_data['conditions'].append({
                 'id': condition.get('id', ''),
                 'field': condition.get('field', ''),
                 'name': condition.get('name', ''),
@@ -307,10 +321,15 @@ def convert_to_query_builder_format(segment_definition):
                 'operator': condition.get('operator', 'equals'),
                 'value': condition.get('value', ''),
                 'data_type': condition.get('data_type', 'string')
-            }
-            container_data['conditions'].append(condition_data)
-        
-        result['containers'].append(container_data)
+            })
+
+        for child in cont.get('children', []):
+            c_data['children'].append(process_container(child))
+
+        return c_data
+
+    for container in segment_definition.get('containers', []):
+        result['containers'].append(process_container(container))
     
     return result
 
@@ -363,11 +382,13 @@ def explain_query_structure(segment_definition):
     
     containers = segment_definition.get('containers', [])
     container_type = segment_definition.get('container_type', 'hit')
-    
+
+    flat_containers = list(iter_all_containers(containers))
+
     explanation.append(f"- Main container type: **{container_type.title()}**")
-    explanation.append(f"- Number of containers: **{len(containers)}**")
-    
-    for i, container in enumerate(containers):
+    explanation.append(f"- Number of containers: **{len(flat_containers)}**")
+
+    for i, container in enumerate(flat_containers):
         mode = "Include" if container.get('include', True) else "Exclude"
         cond_count = len(container.get('conditions', []))
         explanation.append(f"- Container {i+1}: **{mode}** {container.get('type', 'hit')} with {cond_count} condition(s)")
@@ -391,23 +412,24 @@ def analyze_segment_complexity(segment_definition):
     
     # Count containers
     containers = segment_definition.get('containers', [])
-    container_count = len(containers)
+    flat_containers = list(iter_all_containers(containers))
+    container_count = len(flat_containers)
     score += container_count * 2
     details.append(f"{container_count} container(s)")
     
     # Count total conditions
-    total_conditions = sum(len(c.get('conditions', [])) for c in containers)
+    total_conditions = sum(len(c.get('conditions', [])) for c in flat_containers)
     score += total_conditions
     details.append(f"{total_conditions} total condition(s)")
     
     # Check for exclude containers
-    exclude_containers = sum(1 for c in containers if not c.get('include', True))
+    exclude_containers = sum(1 for c in flat_containers if not c.get('include', True))
     if exclude_containers > 0:
         score += exclude_containers * 3
         details.append(f"{exclude_containers} exclude container(s)")
     
     # Check for different container types
-    container_types = set(c.get('type', 'hit') for c in containers)
+    container_types = set(c.get('type', 'hit') for c in flat_containers)
     if len(container_types) > 1:
         score += 2
         details.append("Mixed container types")

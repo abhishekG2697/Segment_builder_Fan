@@ -602,18 +602,20 @@ def render_standard_builder(config):
         else:
             # Render existing containers
             for idx, container in enumerate(containers):
-                render_container(container, idx, config)
+                render_container(container, idx, config, containers)
             
             if st.button("➕ Add Container", key="add_another_container_standard"):
                 add_new_container()
                 st.rerun()
 
-def render_container(container, idx, config):
+def render_container(container, idx, config, container_list, level=0):
     """Render a single container with improved UI"""
     container_id = container.get('id', f"container_{idx}")
-    
+
+    indent = f"margin-left: {level * 20}px;" if level > 0 else ""
+
     with st.container():
-        st.markdown(f'<div class="segment-container">', unsafe_allow_html=True)
+        st.markdown(f'<div class="segment-container" style="{indent}">', unsafe_allow_html=True)
         
         col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
         
@@ -646,8 +648,8 @@ def render_container(container, idx, config):
             )
         
         with col3:
-            # Logic operator
-            if len(st.session_state.segment_definition['containers']) > 1 and idx > 0:
+            # Logic operator for top-level containers
+            if level == 0 and len(st.session_state.segment_definition['containers']) > 1 and idx > 0:
                 st.session_state.segment_definition['logic'] = st.selectbox(
                     "Logic",
                     options=['and', 'or'],
@@ -659,7 +661,7 @@ def render_container(container, idx, config):
         
         with col4:
             if st.button("✕", key=f"{container_id}_remove", help="Remove container"):
-                st.session_state.segment_definition['containers'].pop(idx)
+                container_list.pop(idx)
                 st.session_state.preview_data = None
                 st.rerun()
         
@@ -678,14 +680,23 @@ def render_container(container, idx, config):
                         label_visibility="collapsed",
                         disabled=False
                     )
-                
-                render_condition(condition, idx, cond_idx, config, container_id)
+
+                render_condition(condition, container, cond_idx, config, container_id)
         else:
             st.info("Add conditions using the + button in the left panel")
-        
+
+        # Child containers
+        children = container.get('children', [])
+        for c_idx, child in enumerate(children):
+            render_container(child, c_idx, config, children, level+1)
+
+        if st.button("➕ Add Subcontainer", key=f"{container_id}_add_child"):
+            add_new_container(parent=container)
+            st.rerun()
+
         st.markdown('</div>', unsafe_allow_html=True)
 
-def render_condition(condition, container_idx, condition_idx, config, container_id):
+def render_condition(condition, container, condition_idx, config, container_id):
     """Render a single condition"""
     col1, col2, col3, col4 = st.columns([3, 2, 2, 0.5])
     
@@ -732,25 +743,36 @@ def render_condition(condition, container_idx, condition_idx, config, container_
     
     with col4:
         if st.button("✕", key=f"{container_id}_remove_cond_{condition_idx}", help="Remove"):
-            st.session_state.segment_definition['containers'][container_idx]['conditions'].pop(condition_idx)
+            container['conditions'].pop(condition_idx)
             st.session_state.preview_data = None
             st.rerun()
 
-def add_new_container():
+def add_new_container(parent=None):
     """Add a new container to the segment"""
     new_container = {
         'id': f'container_{uuid.uuid4().hex[:8]}',
         'type': st.session_state.segment_definition.get('container_type', 'hit'),
         'include': True,
         'conditions': [],
+        'children': [],
         'logic': 'and'
     }
-    
-    if 'containers' not in st.session_state.segment_definition:
-        st.session_state.segment_definition['containers'] = []
-    
-    st.session_state.segment_definition['containers'].append(new_container)
+
+    if parent is None:
+        if 'containers' not in st.session_state.segment_definition:
+            st.session_state.segment_definition['containers'] = []
+        st.session_state.segment_definition['containers'].append(new_container)
+    else:
+        parent.setdefault('children', []).append(new_container)
+
     st.session_state.preview_data = None
+
+def iter_all_containers(cont_list):
+    """Yield all containers recursively"""
+    for c in cont_list:
+        yield c
+        if c.get('children'):
+            yield from iter_all_containers(c['children'])
 
 def reset_segment():
     """Reset segment to initial state"""
@@ -785,7 +807,7 @@ def validate_and_save_segment():
     
     # Check if containers have conditions
     total_conditions = 0
-    for container in containers:
+    for container in iter_all_containers(containers):
         conditions = container.get('conditions', [])
         total_conditions += len(conditions)
         
