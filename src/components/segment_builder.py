@@ -828,6 +828,8 @@ def validate_and_save_segment():
             # Add success flag to session state
             st.session_state.segment_saved = True
             st.session_state.last_saved_segment = segment_def.get('name')
+            st.session_state.preview_data = None
+            st.session_state.last_preview_segment = None
 
             # Refresh sidebar segment list from the database
             try:

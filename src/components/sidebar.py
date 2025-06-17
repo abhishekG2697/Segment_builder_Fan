@@ -544,6 +544,7 @@ def add_to_segment(item, item_type, category):
     st.success(f"✅ Added {item['name']} to segment")
     # Clear preview to force regeneration
     st.session_state.preview_data = None
+    st.session_state.last_preview_segment = None
     # Trigger segment update
     st.session_state.segment_updated = True
     # Force a rerun to update the UI
@@ -573,6 +574,7 @@ def add_segment_to_builder(segment):
         # Reset preview selector and clear cached data
         st.session_state.preview_segment_selector = "Current Segment"
         st.session_state.preview_data = None
+        st.session_state.last_preview_segment = None
         st.success(f"✅ Loaded segment: {segment['name']}")
         # Force rerun
         st.rerun()
