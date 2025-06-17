@@ -1,0 +1,801 @@
+import streamlit as st
+import streamlit.components.v1 as components
+from src.database.queries import get_segment_statistics, save_segment
+import uuid
+import json
+
+# Import UI builders
+try:
+    from src.components.react_segment_builder import render_react_segment_builder
+    REACT_AVAILABLE = True
+except ImportError:
+    REACT_AVAILABLE = False
+
+try:
+    from src.components.blockly_segment_builder import render_blockly_segment_builder
+    BLOCKLY_AVAILABLE = True
+except ImportError:
+    BLOCKLY_AVAILABLE = False
+
+try:
+    from src.components.visual_query_builder import render_visual_query_builder
+    VISUAL_AVAILABLE = True
+except ImportError:
+    VISUAL_AVAILABLE = False
+
+def render_segment_builder(config):
+    """Render the main segment builder interface with enhanced UI"""
+    
+    # Custom CSS - COMPLETE LIGHT THEME WITH NO DARK BACKGROUNDS
+    st.markdown("""
+    <style>
+    /* Force light theme everywhere - NO DARK BACKGROUNDS */
+    * {
+        --primary-color: #1473E6 !important;
+        --primary-hover: #0D66D0 !important;
+        --text-dark: #2C2C2C !important;
+        --text-light: #6E6E6E !important;
+        --bg-white: #FFFFFF !important;
+        --bg-light: #F5F5F5 !important;
+        --bg-lighter: #FAFAFA !important;
+        --border-color: #E1E1E1 !important;
+        --border-dark: #D3D3D3 !important;
+    }
+    
+    /* Global overrides - NO BLACK BACKGROUNDS */
+    .stApp {
+        background-color: var(--bg-light) !important;
+    }
+    
+    .main .block-container {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+    }
+    
+    .element-container {
+        margin-bottom: 0.5rem !important;
+    }
+    
+    /* Fix ALL inputs, textareas, and selects - WHITE BACKGROUNDS ONLY */
+    input, textarea, select,
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea,
+    .stSelectbox > div > div > div,
+    .stNumberInput > div > div > input,
+    .stDateInput > div > div > input,
+    [data-baseweb="input"],
+    [data-baseweb="textarea"],
+    [data-baseweb="select"] {
+        background-color: var(--bg-white) !important;
+        color: var(--text-dark) !important;
+        border: 1px solid var(--border-dark) !important;
+    }
+    
+    /* Fix dark description box specifically */
+    textarea[aria-label="Description"],
+    textarea[placeholder*="Describe"] {
+        background-color: var(--bg-white) !important;
+        color: var(--text-dark) !important;
+    }
+    
+    /* Fix ALL buttons - NO DARK BACKGROUNDS */
+    button,
+    .stButton > button,
+    [data-testid="baseButton-secondary"],
+    [data-testid="baseButton-primary"],
+    [role="button"] {
+        background-color: var(--bg-white) !important;
+        color: var(--text-dark) !important;
+        border: 1px solid var(--border-dark) !important;
+    }
+    
+    button:hover,
+    .stButton > button:hover {
+        background-color: var(--bg-lighter) !important;
+        border-color: var(--primary-color) !important;
+        color: var(--primary-color) !important;
+    }
+    
+    /* Fix "+" buttons specifically - WHITE BACKGROUND, DARK SYMBOL */
+    button[title*="Add"],
+    button[aria-label*="Add"],
+    .stButton > button[key*="add"],
+    button:has(.fa-plus),
+    button:contains("➕"),
+    button:contains("+") {
+        background-color: var(--bg-white) !important;
+        color: var(--text-dark) !important;
+        border: 1px solid var(--border-dark) !important;
+        font-weight: 600 !important;
+    }
+    
+    button[title*="Add"]:hover,
+    button[aria-label*="Add"]:hover,
+    .stButton > button[key*="add"]:hover {
+        background-color: #E8F5FF !important;
+        border-color: var(--primary-color) !important;
+        color: var(--primary-color) !important;
+    }
+    
+    /* Primary buttons - Light blue */
+    .stButton > button[type="primary"],
+    .stButton > button[kind="primary"],
+    button.primary {
+        background-color: #E8F5FF !important;
+        color: var(--primary-color) !important;
+        border: 1px solid var(--primary-color) !important;
+        font-weight: 600 !important;
+    }
+    
+    .stButton > button[type="primary"]:hover,
+    .stButton > button[kind="primary"]:hover {
+        background-color: var(--primary-color) !important;
+        color: white !important;
+    }
+    
+    /* Fix segment visualization */
+    .segment-viz-container {
+        background: var(--bg-white) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 4px;
+        padding: 16px;
+        text-align: center;
+        margin-top: 0;
+    }
+    
+    .segment-match-percentage {
+        font-size: 36px !important;
+        font-weight: 700 !important;
+        color: var(--primary-color) !important;
+        margin: 8px 0 !important;
+        line-height: 1 !important;
+    }
+    
+    .segment-match-label {
+        font-size: 12px;
+        color: var(--text-light);
+        margin-bottom: 12px;
+    }
+    
+    .segment-metrics {
+        display: flex;
+        justify-content: space-around;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color);
+    }
+    
+    .metric-item {
+        text-align: center;
+    }
+    
+    .metric-value {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-dark);
+    }
+    
+    .metric-label {
+        font-size: 11px;
+        color: var(--text-light);
+        margin-top: 2px;
+    }
+    
+    /* Labels */
+    .stTextInput > label,
+    .stTextArea > label,
+    .stSelectbox > label,
+    .stNumberInput > label,
+    label {
+        color: var(--text-dark) !important;
+        font-size: 13px !important;
+        font-weight: 500 !important;
+        background: transparent !important;
+    }
+    
+    /* UI Mode selector */
+    .ui-mode-container {
+        background: var(--bg-lighter) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 4px;
+        padding: 12px;
+        margin-bottom: 16px;
+    }
+    
+    .ui-mode-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-dark);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Container styling */
+    .segment-container {
+        background: var(--bg-white) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 4px !important;
+        padding: 12px !important;
+        margin: 8px 0 !important;
+        position: relative !important;
+    }
+    
+    .segment-container::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: #FF6B00;
+        border-radius: 4px 0 0 4px;
+    }
+    
+    /* Radio buttons */
+    .stRadio > div {
+        gap: 16px !important;
+        background: transparent !important;
+    }
+    
+    .stRadio > div > label {
+        font-size: 13px !important;
+        color: var(--text-dark) !important;
+        background: transparent !important;
+    }
+    
+    /* Include/Exclude dots */
+    .include-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #12B886;
+    }
+    
+    .exclude-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #E34850;
+    }
+    
+    /* Headings */
+    h1, h2, h3, h4, h5, h6 {
+        color: var(--text-dark) !important;
+    }
+    
+    /* Help text */
+    .stTextInput > div > div > small,
+    .stTextArea > div > div > small,
+    small {
+        color: var(--text-light) !important;
+    }
+    
+    /* Horizontal line */
+    hr {
+        margin: 16px 0 !important;
+        border: none !important;
+        border-top: 1px solid var(--border-color) !important;
+    }
+    
+    /* Required field note */
+    .required-note {
+        font-size: 11px;
+        color: var(--text-light);
+        margin-bottom: 12px;
+    }
+    
+    /* Fix ALL dropdowns and select boxes */
+    [data-baseweb="select"] > div,
+    [role="listbox"],
+    [role="option"],
+    .stSelectbox > div > div,
+    .stSelectbox > div > div > div {
+        background-color: var(--bg-white) !important;
+        color: var(--text-dark) !important;
+    }
+    
+    [role="option"]:hover {
+        background-color: var(--bg-lighter) !important;
+    }
+    
+    /* Fix any remaining dark elements */
+    [style*="background-color: rgb(38, 39, 48)"],
+    [style*="background-color: rgb(49, 51, 63)"],
+    [style*="background: rgb(38, 39, 48)"],
+    [style*="background: rgb(49, 51, 63)"] {
+        background-color: var(--bg-white) !important;
+    }
+    
+    /* Fix Cancel button - Light style */
+    .stButton > button[key="cancel_segment_btn"] {
+        background-color: var(--bg-white) !important;
+        color: var(--text-dark) !important;
+        border: 2px solid var(--border-dark) !important;
+        padding: 10px 24px !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        border-radius: 6px !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    .stButton > button[key="cancel_segment_btn"]:hover {
+        background-color: #FFF5F5 !important;
+        border-color: #E34850 !important;
+        color: #E34850 !important;
+    }
+    
+    /* Fix Save button - Light blue */
+    .stButton > button[key="save_segment_btn"] {
+        background: #E8F5FF !important;
+        color: var(--primary-color) !important;
+        border: 2px solid var(--primary-color) !important;
+        padding: 10px 32px !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        border-radius: 6px !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    .stButton > button[key="save_segment_btn"]:hover {
+        background: var(--primary-color) !important;
+        color: white !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 2px 6px rgba(20, 115, 230, 0.3) !important;
+    }
+    
+    /* Remove any dark overlays */
+    .stApp > div:first-child {
+        background-color: transparent !important;
+    }
+    
+    /* Fix info boxes */
+    .stAlert {
+        background-color: #E8F5FF !important;
+        color: var(--text-dark) !important;
+        border: 1px solid var(--primary-color) !important;
+    }
+    
+    /* Fix code blocks */
+    .stCodeBlock, pre, code {
+        background-color: var(--bg-lighter) !important;
+        color: var(--text-dark) !important;
+    }
+    
+    /* Ensure all text is dark */
+    p, span, div, li, td, th {
+        color: var(--text-dark) !important;
+    }
+    
+    /* Fix any tooltips */
+    [role="tooltip"] {
+        background-color: var(--text-dark) !important;
+        color: white !important;
+    }
+    
+    /* Definition area */
+    .definition-area {
+        background-color: var(--bg-white) !important;
+        border: 1px solid var(--border-color) !important;
+        padding: 16px !important;
+        border-radius: 4px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Header section with tighter layout
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        # Title input - WHITE BACKGROUND
+        st.session_state.segment_definition['name'] = st.text_input(
+            "Title*", 
+            value=st.session_state.segment_definition['name'],
+            placeholder="Enter segment name",
+            help="Give your segment a descriptive name",
+            key="segment_title_input",
+            disabled=False
+        )
+        
+        # Description textarea - WHITE BACKGROUND
+        st.session_state.segment_definition['description'] = st.text_area(
+            "Description",
+            value=st.session_state.segment_definition['description'],
+            placeholder="Describe what this segment captures",
+            height=50,
+            help="Optional: Describe the purpose of this segment",
+            key="segment_description_input",
+            disabled=False
+        )
+    
+    with col2:
+        # Segment visualization with DYNAMIC calculation
+        render_enhanced_segment_visualization()
+    
+    # Definition section
+    st.markdown("### Definition*")
+    
+    # UI Mode Selector
+    st.markdown('<div class="ui-mode-container">', unsafe_allow_html=True)
+    st.markdown('<div class="ui-mode-label">Builder Interface</div>', unsafe_allow_html=True)
+    
+    # Build UI mode options
+    ui_modes = []
+    ui_descriptions = {}
+    
+    # Add all available UI modes
+    if REACT_AVAILABLE:
+        ui_modes.append("Drag & Drop Builder")
+        ui_descriptions["Drag & Drop Builder"] = "Adobe Analytics style drag-and-drop"
+    
+    if VISUAL_AVAILABLE:
+        ui_modes.append("Visual Query Builder")
+        ui_descriptions["Visual Query Builder"] = "Clean visual interface with dropdowns"
+    
+    if BLOCKLY_AVAILABLE:
+        ui_modes.append("Blockly Visual Builder")
+        ui_descriptions["Blockly Visual Builder"] = "Visual programming with connecting blocks"
+    
+    # Always add Standard as fallback
+    ui_modes.append("Standard Builder")
+    ui_descriptions["Standard Builder"] = "Simple form-based interface"
+    
+    # Select UI mode
+    selected_ui = st.selectbox(
+        "Choose your preferred builder interface",
+        options=ui_modes,
+        index=0,
+        format_func=lambda x: f"{x} - {ui_descriptions.get(x, '')}",
+        key="ui_mode_selector",
+        label_visibility="collapsed",
+        disabled=False
+    )
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Store the iframe container for message handling
+    iframe_placeholder = st.empty()
+    
+    # Render the selected UI
+    if selected_ui == "Drag & Drop Builder" and REACT_AVAILABLE:
+        # React Drag & Drop Builder
+        with iframe_placeholder.container():
+            component_value = render_react_segment_builder(config, st.session_state.segment_definition)
+            handle_component_messages()
+        
+    elif selected_ui == "Visual Query Builder" and VISUAL_AVAILABLE:
+        # Visual Query Builder
+        with iframe_placeholder.container():
+            component_value = render_visual_query_builder(config, st.session_state.segment_definition)
+            handle_component_messages()
+    
+    elif selected_ui == "Blockly Visual Builder" and BLOCKLY_AVAILABLE:
+        # Blockly Visual Builder
+        with iframe_placeholder.container():
+            component_value = render_blockly_segment_builder(config, st.session_state.segment_definition)
+            handle_component_messages()
+        
+    else:
+        # Standard Streamlit Builder
+        render_standard_builder(config)
+    
+    # Footer section with Save/Cancel buttons
+    st.markdown("---")
+    st.markdown('<p class="required-note">* All fields with an asterisk are required in order to save.</p>', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([3, 1.2, 1.2])
+    
+    with col2:
+        # Cancel button - Light style
+        if st.button("❌ Cancel", key="cancel_segment_btn", use_container_width=True, help="Discard changes and reset"):
+            reset_segment()
+    
+    with col3:
+        # Save button - Light blue style
+        if st.button("💾 Save Segment", key="save_segment_btn", type="primary", use_container_width=True, help="Save segment to library"):
+            with st.spinner("Saving..."):
+                if validate_and_save_segment():
+                    st.success("✅ Segment saved successfully!", icon="🎉")
+                    st.balloons()
+                    # Switch to library tab to show saved segment
+                    st.session_state.active_tab = 2
+                    # Small delay for user feedback
+                    import time
+                    time.sleep(0.5)
+                    st.rerun()
+
+def handle_component_messages():
+    """Handle messages from iframe components"""
+    # JavaScript to handle postMessage
+    components.html("""
+    <script>
+    // Listen for messages from iframes
+    window.addEventListener('message', function(e) {
+        if (e.data && e.data.type === 'segmentUpdate') {
+            // Send the segment data to Streamlit
+            window.parent.postMessage({
+                isStreamlitMessage: true,
+                type: 'streamlit:setComponentValue',
+                key: 'segment_update',
+                value: JSON.stringify(e.data.segment)
+            }, '*');
+        }
+    });
+    </script>
+    """, height=0)
+    
+    # Check for segment updates in query params
+    if 'segment_update' in st.query_params:
+        try:
+            segment_data = json.loads(st.query_params['segment_update'])
+            st.session_state.segment_definition = segment_data
+            st.session_state.preview_data = None
+            del st.query_params['segment_update']
+            st.rerun()
+        except:
+            pass
+
+def render_enhanced_segment_visualization():
+    """Render an enhanced segment visualization with DYNAMIC calculation"""
+    # Get real statistics from database
+    stats = get_segment_statistics(st.session_state.segment_definition)
+    
+    # Use actual calculated values
+    total_visitors = stats.get('total_visitors', 1)
+    matched_visitors = stats.get('visitors', 0)
+    matched_sessions = stats.get('sessions', 0)
+    matched_hits = stats.get('hits', 0)
+    
+    # Calculate percentage dynamically
+    visitor_percentage = round((matched_visitors / total_visitors * 100) if total_visitors > 0 else 0)
+    
+    # Ensure percentage is displayed correctly
+    percentage_display = f"{visitor_percentage}%"
+    
+    st.markdown(f"""
+    <div class="segment-viz-container">
+        <div class="segment-match-label">SEGMENT MATCH</div>
+        <div class="segment-match-percentage">{percentage_display}</div>
+        <div class="segment-match-label">of total visitors</div>
+        
+        <div class="segment-metrics">
+            <div class="metric-item">
+                <div class="metric-value">{matched_visitors:,}</div>
+                <div class="metric-label">Visitors</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value">{matched_sessions:,}</div>
+                <div class="metric-label">Sessions</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-value">{matched_hits:,}</div>
+                <div class="metric-label">Hits</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_standard_builder(config):
+    """Render the standard Streamlit-based builder"""
+    # Container type selector
+    container_type = st.selectbox(
+        "Container Type",
+        options=['hit', 'visit', 'visitor'],
+        format_func=lambda x: {
+            'hit': 'Hit (Page View)',
+            'visit': 'Visit (Session)',
+            'visitor': 'Visitor'
+        }.get(x, x),
+        key="main_container_type",
+        disabled=False
+    )
+    st.session_state.segment_definition['container_type'] = container_type
+    
+    # Containers area
+    if not st.session_state.segment_definition.get('containers'):
+        # Empty state
+        st.info("👆 Click the + button next to items in the left panel to add conditions, or click 'Add Container' below")
+        
+        if st.button("➕ Add Container", key="add_first_container_standard"):
+            add_new_container()
+            st.rerun()
+    else:
+        # Render existing containers
+        for idx, container in enumerate(st.session_state.segment_definition['containers']):
+            render_container(container, idx, config)
+        
+        if st.button("➕ Add Container", key="add_another_container_standard"):
+            add_new_container()
+            st.rerun()
+
+def render_container(container, idx, config):
+    """Render a single container with improved UI"""
+    container_id = container.get('id', f"container_{idx}")
+    
+    with st.container():
+        st.markdown(f'<div class="segment-container">', unsafe_allow_html=True)
+        
+        col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+        
+        with col1:
+            # Include/Exclude radio
+            include_mode = st.radio(
+                "Mode",
+                options=["Include", "Exclude"],
+                key=f"{container_id}_mode",
+                index=0 if container.get('include', True) else 1,
+                horizontal=True,
+                label_visibility="collapsed"
+            )
+            container['include'] = (include_mode == "Include")
+        
+        with col2:
+            # Container type
+            container['type'] = st.selectbox(
+                "Type",
+                options=['hit', 'visit', 'visitor'],
+                format_func=lambda x: {
+                    'hit': 'Hit',
+                    'visit': 'Visit',
+                    'visitor': 'Visitor'
+                }.get(x, x),
+                key=f"{container_id}_type",
+                index=['hit', 'visit', 'visitor'].index(container.get('type', 'hit')),
+                label_visibility="collapsed",
+                disabled=False
+            )
+        
+        with col3:
+            # Logic operator
+            if len(st.session_state.segment_definition['containers']) > 1 and idx > 0:
+                st.session_state.segment_definition['logic'] = st.selectbox(
+                    "Logic",
+                    options=['and', 'or'],
+                    key=f"segment_logic_{idx}",
+                    format_func=lambda x: x.upper(),
+                    label_visibility="collapsed",
+                    disabled=False
+                )
+        
+        with col4:
+            if st.button("✕", key=f"{container_id}_remove", help="Remove container"):
+                st.session_state.segment_definition['containers'].pop(idx)
+                st.session_state.preview_data = None
+                st.rerun()
+        
+        # Conditions
+        if container.get('conditions'):
+            for cond_idx, condition in enumerate(container['conditions']):
+                if cond_idx > 0:
+                    # Logic operator between conditions
+                    container['logic'] = st.selectbox(
+                        "Logic",
+                        options=['and', 'or', 'then'],
+                        key=f"{container_id}_logic_{cond_idx}",
+                        format_func=lambda x: x.upper(),
+                        index=['and', 'or', 'then'].index(container.get('logic', 'and')),
+                        label_visibility="collapsed",
+                        disabled=False
+                    )
+                
+                render_condition(condition, idx, cond_idx, config, container_id)
+        else:
+            st.info("Add conditions using the + button in the left panel")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+
+def render_condition(condition, container_idx, condition_idx, config, container_id):
+    """Render a single condition"""
+    col1, col2, col3, col4 = st.columns([3, 2, 2, 0.5])
+    
+    with col1:
+        # Field display
+        field_display = condition.get('name', 'Select field')
+        field_type = "📊" if condition.get('type') == 'dimension' else "📈"
+        st.markdown(f"**{field_type} {field_display}**")
+    
+    with col2:
+        # Operator selector
+        data_type = condition.get('data_type', 'string')
+        operators = config['operators'].get(data_type, ['equals'])
+        
+        condition['operator'] = st.selectbox(
+            "Operator",
+            options=operators,
+            key=f"{container_id}_operator_{condition_idx}",
+            index=operators.index(condition.get('operator', 'equals')) if condition.get('operator', 'equals') in operators else 0,
+            label_visibility="collapsed",
+            disabled=False
+        )
+    
+    with col3:
+        # Value input
+        if condition['operator'] not in ['exists', 'does not exist']:
+            if data_type == 'number':
+                condition['value'] = st.number_input(
+                    "Value",
+                    key=f"{container_id}_value_{condition_idx}",
+                    value=float(condition.get('value', 0)) if condition.get('value') else 0.0,
+                    label_visibility="collapsed",
+                    disabled=False
+                )
+            else:
+                condition['value'] = st.text_input(
+                    "Value",
+                    value=str(condition.get('value', '')),
+                    placeholder="Enter value",
+                    key=f"{container_id}_value_{condition_idx}",
+                    label_visibility="collapsed",
+                    disabled=False
+                )
+    
+    with col4:
+        if st.button("✕", key=f"{container_id}_remove_cond_{condition_idx}", help="Remove"):
+            st.session_state.segment_definition['containers'][container_idx]['conditions'].pop(condition_idx)
+            st.session_state.preview_data = None
+            st.rerun()
+
+def add_new_container():
+    """Add a new container to the segment"""
+    new_container = {
+        'id': f'container_{uuid.uuid4().hex[:8]}',
+        'type': st.session_state.segment_definition.get('container_type', 'hit'),
+        'include': True,
+        'conditions': [],
+        'logic': 'and'
+    }
+    
+    if 'containers' not in st.session_state.segment_definition:
+        st.session_state.segment_definition['containers'] = []
+    
+    st.session_state.segment_definition['containers'].append(new_container)
+    st.session_state.preview_data = None
+
+def reset_segment():
+    """Reset segment to initial state"""
+    st.session_state.segment_definition = {
+        'name': 'New Segment',
+        'description': '',
+        'container_type': 'visit',
+        'containers': [],
+        'logic': 'and'
+    }
+    st.session_state.preview_data = None
+    st.rerun()
+
+def validate_and_save_segment():
+    """Validate and save the segment"""
+    from src.utils.validators import validate_segment
+    
+    # Basic validation
+    if not st.session_state.segment_definition.get('name') or st.session_state.segment_definition['name'] == 'New Segment':
+        st.error("Please enter a segment name")
+        return False
+    
+    if not st.session_state.segment_definition.get('containers'):
+        st.error("Please add at least one container with conditions")
+        return False
+    
+    # Check if all conditions have values
+    for container in st.session_state.segment_definition['containers']:
+        for condition in container.get('conditions', []):
+            if condition.get('operator') not in ['exists', 'does not exist']:
+                if not str(condition.get('value', '')).strip():
+                    st.error(f"Please enter a value for {condition.get('name', 'condition')}")
+                    return False
+    
+    if validate_segment(st.session_state.segment_definition):
+        # Save to database
+        success, message = save_segment(st.session_state.segment_definition)
+        if success:
+            # Add to session saved segments
+            if 'saved_segments' not in st.session_state:
+                st.session_state.saved_segments = []
+            st.session_state.saved_segments.append(st.session_state.segment_definition.copy())
+            return True
+        else:
+            st.error(f"Failed to save: {message}")
+            return False
+    else:
+        st.error("Please complete all required fields")
+        return False

@@ -1,0 +1,153 @@
+app:
+  name: "Segment Builder"
+  version: "1.0.0"
+  theme:
+    primary_color: "#1473E6"
+    secondary_color: "#0D66D0"
+    background_color: "#F5F5F5"
+    text_color: "#323232"
+
+database:
+  path: "data/analytics.db"
+  sample_data_size: 100000
+
+dimensions:
+  - category: "Page"
+    items:
+      - name: "Page URL"
+        field: "page_url"
+        type: "string"
+      - name: "Page Title"
+        field: "page_title"
+        type: "string"
+      - name: "Page Type"
+        field: "page_type"
+        type: "string"
+        values: ["Home", "Product", "Category", "Checkout", "Search"]
+
+  - category: "Browser"
+    items:
+      - name: "Browser Name"
+        field: "browser_name"
+        type: "string"
+        values: ["Chrome", "Firefox", "Safari", "Edge", "Other"]
+      - name: "Browser Version"
+        field: "browser_version"
+        type: "string"
+      - name: "Device Type"
+        field: "device_type"
+        type: "string"
+        values: ["Desktop", "Mobile", "Tablet"]
+
+  - category: "User"
+    items:
+      - name: "User ID"
+        field: "user_id"
+        type: "string"
+      - name: "User Type"
+        field: "user_type"
+        type: "string"
+        values: ["New", "Returning", "Registered"]
+      - name: "Country"
+        field: "country"
+        type: "string"
+      - name: "City"
+        field: "city"
+        type: "string"
+
+  - category: "Traffic"
+    items:
+      - name: "Campaign"
+        field: "campaign"
+        type: "string"
+      - name: "Source"
+        field: "traffic_source"
+        type: "string"
+        values: ["Direct", "Organic", "Paid", "Social", "Email", "Referral"]
+      - name: "Medium"
+        field: "traffic_medium"
+        type: "string"
+
+metrics:
+  - category: "Engagement"
+    items:
+      - name: "Page Views"
+        field: "page_views"
+        type: "number"
+        aggregation: "sum"
+      - name: "Time on Page"
+        field: "time_on_page"
+        type: "number"
+        aggregation: "avg"
+        unit: "seconds"
+      - name: "Bounce Rate"
+        field: "bounce_rate"
+        type: "number"
+        aggregation: "avg"
+        unit: "%"
+
+  - category: "Commerce"
+    items:
+      - name: "Revenue"
+        field: "revenue"
+        type: "number"
+        aggregation: "sum"
+        unit: "$"
+      - name: "Orders"
+        field: "orders"
+        type: "number"
+        aggregation: "sum"
+      - name: "Products Viewed"
+        field: "products_viewed"
+        type: "number"
+        aggregation: "sum"
+      - name: "Cart Additions"
+        field: "cart_additions"
+        type: "number"
+        aggregation: "sum"
+
+segments:
+  - name: "High Value Customers"
+    description: "Visitors with revenue > $500"
+    container_type: "visitor"
+  - name: "Mobile Users"
+    description: "All mobile device traffic"
+    container_type: "hit"
+  - name: "Engaged Sessions"
+    description: "Sessions with 5+ page views"
+    container_type: "visit"
+
+operators:
+  string:
+    - "equals"
+    - "does not equal"
+    - "contains"
+    - "does not contain"
+    - "starts with"
+    - "ends with"
+    - "exists"
+    - "does not exist"
+  number:
+    - "equals"
+    - "does not equal"
+    - "is greater than"
+    - "is greater than or equal to"
+    - "is less than"
+    - "is less than or equal to"
+    - "is between"
+    - "exists"
+    - "does not exist"
+
+container_types:
+  - name: "Hit"
+    alias: "Page View"
+    level: 1
+    color: "#E3F2FF"
+  - name: "Visit"
+    alias: "Session"
+    level: 2
+    color: "#D0E8FF"
+  - name: "Visitor"
+    alias: "Visitor"
+    level: 3
+    color: "#B8DCFF"

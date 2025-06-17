@@ -1,0 +1,3 @@
+data/analytics.db
+*.db # Optional: ignore all .db files
+data/analytics.db

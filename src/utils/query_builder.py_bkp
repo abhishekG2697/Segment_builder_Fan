@@ -1,0 +1,299 @@
+import streamlit as st
+import streamlit.components.v1 as components
+import json
+
+def render_query_builder(segment_definition):
+    """Render the React Awesome Query Builder component"""
+    
+    # Convert segment definition to query builder format
+    query_config = convert_to_query_builder_format(segment_definition)
+    
+    # HTML template for the query builder
+    query_builder_html = """
+    <div id="query-builder-root"></div>
+    <link href="https://cdn.jsdelivr.net/npm/@react-awesome-query-builder/ui@6.3.0/css/styles.min.css" rel="stylesheet">
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@react-awesome-query-builder/ui@6.3.0/dist/index.min.js"></script>
+    
+    <script>
+        const { Query, Builder, BasicConfig, Utils: { loadTree, queryString } } = ReactAwesomeQueryBuilder;
+        
+        // Configuration
+        const config = {
+            ...BasicConfig,
+            fields: {
+                page_url: {
+                    label: "Page URL",
+                    type: "text",
+                    defaultOperator: "like"
+                },
+                page_type: {
+                    label: "Page Type",
+                    type: "select",
+                    valueSources: ["value"],
+                    listValues: [
+                        { value: "Home", title: "Home" },
+                        { value: "Product", title: "Product" },
+                        { value: "Category", title: "Category" },
+                        { value: "Checkout", title: "Checkout" },
+                        { value: "Search", title: "Search" }
+                    ]
+                },
+                revenue: {
+                    label: "Revenue",
+                    type: "number",
+                    defaultOperator: "greater",
+                    fieldSettings: {
+                        min: 0
+                    }
+                },
+                browser_name: {
+                    label: "Browser",
+                    type: "select",
+                    valueSources: ["value"],
+                    listValues: [
+                        { value: "Chrome", title: "Chrome" },
+                        { value: "Firefox", title: "Firefox" },
+                        { value: "Safari", title: "Safari" },
+                        { value: "Edge", title: "Edge" }
+                    ]
+                },
+                device_type: {
+                    label: "Device Type",
+                    type: "select",
+                    valueSources: ["value"],
+                    listValues: [
+                        { value: "Desktop", title: "Desktop" },
+                        { value: "Mobile", title: "Mobile" },
+                        { value: "Tablet", title: "Tablet" }
+                    ]
+                },
+                time_on_page: {
+                    label: "Time on Page (seconds)",
+                    type: "number",
+                    defaultOperator: "greater",
+                    fieldSettings: {
+                        min: 0
+                    }
+                }
+            },
+            operators: {
+                ...BasicConfig.operators,
+                like: {
+                    ...BasicConfig.operators.like,
+                    sqlOp: "LIKE",
+                    sqlOpWhenNegated: "NOT LIKE",
+                    textSeparators: ["%"],
+                    formatOp: (field, op, value) => `%${value}%`
+                }
+            }
+        };
+        
+        // Initial query value
+        const queryValue = %s;
+        
+        // Load tree
+        const tree = loadTree(queryValue);
+        
+        // Render function
+        const renderBuilder = (props) => {
+            return React.createElement(
+                "div",
+                { className: "query-builder-container" },
+                React.createElement(Query, {
+                    ...config,
+                    value: tree,
+                    onChange: (immutableTree, config) => {
+                        const jsonTree = immutableTree.toJS();
+                        // Send back to Streamlit
+                        window.parent.postMessage({
+                            type: 'queryBuilderUpdate',
+                            data: jsonTree
+                        }, '*');
+                    },
+                    renderBuilder: props => React.createElement(Builder, props)
+                })
+            );
+        };
+        
+        // Mount the component
+        const root = ReactDOM.createRoot(document.getElementById('query-builder-root'));
+        root.render(React.createElement(renderBuilder));
+    </script>
+    """ % json.dumps(query_config)
+    
+    # Render the component
+    components.html(query_builder_html, height=400, scrolling=True)
+
+def convert_to_query_builder_format(segment_definition):
+    """Convert segment definition to React Awesome Query Builder format"""
+    
+    if not segment_definition.get('containers'):
+        return {"id": "root", "type": "group"}
+    
+    # For simplicity, convert the first container
+    container = segment_definition['containers'][0] if segment_definition['containers'] else {}
+    
+    group = {
+        "id": "root",
+        "type": "group",
+        "properties": {
+            "conjunction": container.get('logic', 'AND').upper(),
+            "not": not container.get('include', True)
+        },
+        "children": []
+    }
+    
+    # Convert conditions
+    for idx, condition in enumerate(container.get('conditions', [])):
+        rule = {
+            "id": f"rule_{idx}",
+            "type": "rule",
+            "properties": {
+                "field": condition.get('field', ''),
+                "operator": convert_operator(condition.get('operator', 'equals')),
+                "value": [condition.get('value', '')]
+            }
+        }
+        group['children'].append(rule)
+    
+    return group
+
+def convert_operator(operator):
+    """Convert operator to query builder format"""
+    operator_map = {
+        'equals': 'equal',
+        'does not equal': 'not_equal',
+        'contains': 'like',
+        'does not contain': 'not_like',
+        'is greater than': 'greater',
+        'is less than': 'less',
+        'is greater than or equal to': 'greater_or_equal',
+        'is less than or equal to': 'less_or_equal',
+        'is between': 'between',
+        'exists': 'is_not_null',
+        'does not exist': 'is_null'
+    }
+    return operator_map.get(operator, 'equal')
+
+def build_sql_from_segment(segment_definition):
+    """Build SQL query from segment definition"""
+    
+    # Base query
+    base_table = 'hits'
+    
+    # Container type determines the aggregation level
+    container_type = segment_definition.get('container_type', 'hit')
+    
+    # Build WHERE clause from containers
+    where_clauses = []
+    
+    for container in segment_definition.get('containers', []):
+        container_where = build_container_where_clause(container)
+        if container_where:
+            if not container.get('include', True):
+                container_where = f"NOT ({container_where})"
+            where_clauses.append(container_where)
+    
+    # Combine WHERE clauses
+    if where_clauses:
+        main_logic = segment_definition.get('logic', 'and').upper()
+        where_clause = f" {main_logic} ".join(f"({clause})" for clause in where_clauses)
+    else:
+        where_clause = "1=1"
+    
+    # Build final query based on container type
+    if container_type == 'hit':
+        query = f"""
+        SELECT h.*
+        FROM hits h
+        WHERE {where_clause}
+        """
+    elif container_type == 'visit':
+        query = f"""
+        SELECT h.*
+        FROM hits h
+        WHERE h.session_id IN (
+            SELECT DISTINCT session_id
+            FROM hits
+            WHERE {where_clause}
+        )
+        """
+    else:  # visitor
+        query = f"""
+        SELECT h.*
+        FROM hits h
+        WHERE h.user_id IN (
+            SELECT DISTINCT user_id
+            FROM hits
+            WHERE {where_clause}
+        )
+        """
+    
+    return query
+
+def build_container_where_clause(container):
+    """Build WHERE clause for a container"""
+    conditions = container.get('conditions', [])
+    if not conditions:
+        return ""
+    
+    condition_clauses = []
+    
+    for condition in conditions:
+        clause = build_condition_clause(condition)
+        if clause:
+            condition_clauses.append(clause)
+    
+    if condition_clauses:
+        logic = container.get('logic', 'and').upper()
+        # Handle THEN operator (sequential)
+        if logic == 'THEN':
+            # For sequential, we need to ensure order
+            # This is a simplified version
+            return " AND ".join(condition_clauses)
+        else:
+            return f" {logic} ".join(condition_clauses)
+    
+    return ""
+
+def build_condition_clause(condition):
+    """Build SQL clause for a single condition"""
+    field = condition.get('field', '')
+    operator = condition.get('operator', 'equals')
+    value = condition.get('value', '')
+    
+    if not field:
+        return ""
+    
+    # Handle different operators
+    if operator == 'equals':
+        return f"{field} = '{value}'"
+    elif operator == 'does not equal':
+        return f"{field} != '{value}'"
+    elif operator == 'contains':
+        return f"{field} LIKE '%{value}%'"
+    elif operator == 'does not contain':
+        return f"{field} NOT LIKE '%{value}%'"
+    elif operator == 'starts with':
+        return f"{field} LIKE '{value}%'"
+    elif operator == 'ends with':
+        return f"{field} LIKE '%{value}'"
+    elif operator == 'is greater than':
+        return f"{field} > {value}"
+    elif operator == 'is less than':
+        return f"{field} < {value}"
+    elif operator == 'is greater than or equal to':
+        return f"{field} >= {value}"
+    elif operator == 'is less than or equal to':
+        return f"{field} <= {value}"
+    elif operator == 'is between':
+        value2 = condition.get('value2', value)
+        return f"{field} BETWEEN {value} AND {value2}"
+    elif operator == 'exists':
+        return f"{field} IS NOT NULL"
+    elif operator == 'does not exist':
+        return f"{field} IS NULL"
+    else:
+        return f"{field} = '{value}'"

@@ -1,0 +1,483 @@
+import streamlit as st
+import pandas as pd
+from src.database.queries import get_available_values
+import streamlit.components.v1 as components
+import uuid
+
+def render_sidebar(config):
+    """Render the sidebar with dimensions, metrics, and segments"""
+    
+    # Clean Adobe Analytics styling with drag and drop
+    st.markdown("""
+    <style>
+    /* Remove all dark backgrounds */
+    div[data-testid="stButton"] > button {
+        background: transparent !important;
+        border: none !important;
+        color: #2C2C2C !important;
+        padding: 2px 4px !important;
+        font-size: 18px !important;
+    }
+    
+    div[data-testid="stButton"] > button:hover {
+        color: #1473E6 !important;
+    }
+    
+    /* Search box styling */
+    input[placeholder*="Search components"] {
+        background: #FFFFFF !important;
+        border: 1px solid #D3D3D3 !important;
+        color: #2C2C2C !important;
+    }
+    
+    /* Component count styling */
+    .component-count {
+        color: #E34850;
+        font-weight: 700;
+        font-size: 18px;
+    }
+    
+    /* Draggable item styling */
+    .sidebar-item {
+        background: #FFFFFF;
+        border: 1px solid #E1E1E1;
+        padding: 8px;
+        margin: 4px 0;
+        border-radius: 4px;
+        font-size: 14px;
+        color: #2C2C2C;
+        cursor: move;
+        user-select: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .sidebar-item:hover {
+        background: #F0F8FF;
+        border-color: #1473E6;
+        transform: translateX(2px);
+    }
+    
+    .sidebar-item.dragging {
+        opacity: 0.5;
+    }
+    
+    /* Plus button styling - dark + on transparent background */
+    .add-button {
+        background: transparent;
+        border: none;
+        color: #2C2C2C;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 2px 6px;
+        margin-left: 8px;
+    }
+    
+    .add-button:hover {
+        color: #1473E6;
+    }
+    </style>
+    
+    <script>
+    // Enable drag functionality
+    function enableDrag(element) {
+        element.draggable = true;
+        
+        element.addEventListener('dragstart', function(e) {
+            e.dataTransfer.effectAllowed = 'copy';
+            const data = {
+                type: this.dataset.type,
+                field: this.dataset.field,
+                name: this.dataset.name,
+                category: this.dataset.category,
+                dataType: this.dataset.dataType
+            };
+            e.dataTransfer.setData('text/plain', JSON.stringify(data));
+            this.classList.add('dragging');
+        });
+        
+        element.addEventListener('dragend', function(e) {
+            this.classList.remove('dragging');
+        });
+    }
+    
+    // Initialize drag for all sidebar items when DOM is ready
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.sidebar-item').forEach(enableDrag);
+    });
+    
+    // Also initialize for dynamically added elements
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            mutation.addedNodes.forEach(function(node) {
+                if (node.classList && node.classList.contains('sidebar-item')) {
+                    enableDrag(node);
+                }
+            });
+        });
+    });
+    
+    observer.observe(document.body, { childList: true, subtree: true });
+    </script>
+    """, unsafe_allow_html=True)
+    
+    # Search box
+    search_query = st.text_input("🔍", placeholder="Search components...", label_visibility="collapsed")
+    
+    # Filter dropdown
+    filter_option = st.selectbox(
+        "",
+        ["All Components", "Dimensions", "Metrics", "Segments"],
+        label_visibility="collapsed"
+    )
+    
+    # Dimensions section
+    if filter_option in ["All Components", "Dimensions"]:
+        dimension_count = sum(len(cat['items']) for cat in config['dimensions'])
+        
+        # Header with count
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0;">
+            <span style="color: #2C2C2C; font-size: 13px; font-weight: 700; text-transform: uppercase;">
+                📊 DIMENSIONS
+            </span>
+            <span class="component-count">{dimension_count}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("", expanded=True):
+            for category in config['dimensions']:
+                st.markdown(f"**{category['category']}**")
+                for item in category['items']:
+                    if not search_query or search_query.lower() in item['name'].lower():
+                        render_dimension_item(item, category['category'])
+    
+    # Metrics section
+    if filter_option in ["All Components", "Metrics"]:
+        metric_count = sum(len(cat['items']) for cat in config['metrics'])
+        
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; margin-top: 16px;">
+            <span style="color: #2C2C2C; font-size: 13px; font-weight: 700; text-transform: uppercase;">
+                📈 METRICS
+            </span>
+            <span class="component-count">{metric_count}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("", expanded=True):
+            for category in config['metrics']:
+                st.markdown(f"**{category['category']}**")
+                for item in category['items']:
+                    if not search_query or search_query.lower() in item['name'].lower():
+                        render_metric_item(item, category['category'])
+    
+    # Segments section
+    if filter_option in ["All Components", "Segments"]:
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; margin-top: 16px;">
+            <span style="color: #2C2C2C; font-size: 13px; font-weight: 700; text-transform: uppercase;">
+                🎯 SEGMENTS
+            </span>
+            <span class="component-count">{len(config['segments'])}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("", expanded=True):
+            for segment in config['segments']:
+                if not search_query or search_query.lower() in segment['name'].lower():
+                    render_segment_item(segment)
+    
+    # Show all link
+    st.markdown("""
+    <div style="margin-top: 16px;">
+        <a href="#" style="color: #1473E6; font-size: 13px; text-decoration: none;">Show All</a>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_dimension_item(item, category):
+    """Render a dimension item with drag functionality and add button"""
+    item_id = f"dim_{item['field']}_{uuid.uuid4().hex[:8]}"
+    
+    st.markdown(f"""
+    <div class="sidebar-item" 
+         id="{item_id}"
+         draggable="true"
+         data-type="dimension"
+         data-field="{item['field']}"
+         data-name="{item['name']}"
+         data-category="{category}"
+         data-data-type="{item.get('type', 'string')}">
+        <div style="display: flex; align-items: center;">
+            <span style="margin-right: 8px;">📊</span>
+            <span style="color: #2C2C2C;">{item['name']}</span>
+        </div>
+        <button class="add-button" onclick="document.getElementById('add_btn_{item['field']}').click();">➕</button>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Hidden Streamlit button for functionality
+    if st.button("", key=f"add_btn_{item['field']}", label_visibility="collapsed"):
+        add_to_segment(item, 'dimension', category)
+
+def render_metric_item(item, category):
+    """Render a metric item with drag functionality and add button"""
+    item_id = f"met_{item['field']}_{uuid.uuid4().hex[:8]}"
+    
+    st.markdown(f"""
+    <div class="sidebar-item"
+         id="{item_id}"
+         draggable="true"
+         data-type="metric"
+         data-field="{item['field']}"
+         data-name="{item['name']}"
+         data-category="{category}"
+         data-data-type="{item.get('type', 'number')}">
+        <div style="display: flex; align-items: center;">
+            <span style="margin-right: 8px;">📈</span>
+            <span style="color: #2C2C2C;">{item['name']}</span>
+        </div>
+        <button class="add-button" onclick="document.getElementById('add_btn_{item['field']}').click();">➕</button>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Hidden Streamlit button
+    if st.button("", key=f"add_btn_{item['field']}", label_visibility="collapsed"):
+        add_to_segment(item, 'metric', category)
+
+def render_segment_item(segment):
+    """Render a segment item with drag functionality and add button"""
+    item_id = f"seg_{segment['name'].replace(' ', '_')}_{uuid.uuid4().hex[:8]}"
+    
+    st.markdown(f"""
+    <div class="sidebar-item"
+         id="{item_id}"
+         draggable="true"
+         data-type="segment"
+         data-name="{segment['name']}"
+         style="padding: 12px;">
+        <div style="flex: 1;">
+            <div style="display: flex; align-items: center;">
+                <span style="margin-right: 8px;">🎯</span>
+                <span style="color: #2C2C2C;">{segment['name']}</span>
+            </div>
+            <div style="font-size: 12px; color: #6E6E6E; margin-top: 4px; margin-left: 24px;">
+                {segment['description']}
+            </div>
+        </div>
+        <button class="add-button" onclick="document.getElementById('add_btn_seg_{segment['name'].replace(' ', '_')}').click();">➕</button>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Hidden Streamlit button
+    if st.button("", key=f"add_btn_seg_{segment['name'].replace(' ', '_')}", label_visibility="collapsed"):
+        add_segment_to_builder(segment)
+
+def add_to_segment(item, item_type, category):
+    """Add a dimension or metric to the current segment"""
+    import uuid
+    
+    new_condition = {
+        'id': f"{item_type}_{item['field']}_{uuid.uuid4().hex[:8]}",
+        'field': item['field'],
+        'name': item['name'],
+        'type': item_type,
+        'category': category,
+        'operator': 'equals',
+        'value': '',
+        'data_type': item.get('type', 'string')
+    }
+    
+    # Add to current container or create new one
+    if not st.session_state.segment_definition.get('containers'):
+        st.session_state.segment_definition['containers'] = [{
+            'id': f'container_{uuid.uuid4().hex[:8]}',
+            'type': 'hit',
+            'include': True,
+            'conditions': [new_condition],
+            'logic': 'and'
+        }]
+    else:
+        # Add to the first container
+        st.session_state.segment_definition['containers'][0]['conditions'].append(new_condition)
+    
+    st.success(f"Added {item['name']} to segment")
+    st.rerun()
+
+def add_segment_to_builder(segment):
+    """Add a pre-built segment to the builder"""
+    # Load the segment definition
+    if 'definition' in segment:
+        st.session_state.segment_definition = segment['definition'].copy()
+        st.session_state.segment_definition['name'] = segment['name']
+        st.session_state.segment_definition['description'] = segment['description']
+        st.success(f"Loaded segment: {segment['name']}")
+        st.rerun()
+    else:
+        st.warning(f"Segment {segment['name']} has no definition")
+    
+    # Dimensions section
+    if filter_option in ["All Components", "Dimensions"]:
+        dimension_count = sum(len(cat['items']) for cat in config['dimensions'])
+        
+        # Custom expander header with count
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0;">
+            <span style="color: #2C2C2C; font-size: 13px; font-weight: 700; text-transform: uppercase;">
+                📊 DIMENSIONS
+            </span>
+            <span class="component-count">{dimension_count}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("", expanded=True):
+            for category in config['dimensions']:
+                st.markdown(f"**{category['category']}**", help=f"{len(category['items'])} items")
+                for item in category['items']:
+                    if not search_query or search_query.lower() in item['name'].lower():
+                        render_dimension_item(item, category['category'])
+    
+    # Metrics section
+    if filter_option in ["All Components", "Metrics"]:
+        metric_count = sum(len(cat['items']) for cat in config['metrics'])
+        
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; margin-top: 16px;">
+            <span style="color: #2C2C2C; font-size: 13px; font-weight: 700; text-transform: uppercase;">
+                📈 METRICS
+            </span>
+            <span class="component-count">{metric_count}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("", expanded=True):
+            for category in config['metrics']:
+                st.markdown(f"**{category['category']}**", help=f"{len(category['items'])} items")
+                for item in category['items']:
+                    if not search_query or search_query.lower() in item['name'].lower():
+                        render_metric_item(item, category['category'])
+    
+    # Segments section
+    if filter_option in ["All Components", "Segments"]:
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 0; margin-top: 16px;">
+            <span style="color: #2C2C2C; font-size: 13px; font-weight: 700; text-transform: uppercase;">
+                🎯 SEGMENTS
+            </span>
+            <span class="component-count">{len(config['segments'])}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("", expanded=True):
+            for segment in config['segments']:
+                if not search_query or search_query.lower() in segment['name'].lower():
+                    render_segment_item(segment)
+    
+    # Show all button
+    st.markdown("""
+    <div style="text-align: left; margin-top: 16px;">
+        <a href="#" style="color: #1473E6; font-size: 13px; text-decoration: none;">Show All</a>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_dimension_item(item, category):
+    """Render a dimension item with add button"""
+    # Create a unique div with drag functionality
+    item_html = f"""
+    <div draggable="true" 
+         ondragstart="event.dataTransfer.setData('text/plain', JSON.stringify({{type: 'dimension', field: '{item['field']}', name: '{item['name']}', category: '{category}', data_type: '{item.get('type', 'string')}'}}))"
+         style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; margin: 2px 0; background: #FFFFFF; border: 1px solid #E1E1E1; border-radius: 4px; font-size: 14px; color: #2C2C2C; cursor: move;">
+        <div style="display: flex; align-items: center;">
+            <span style="margin-right: 6px;">📊</span>
+            <span style="color: #2C2C2C; font-weight: 400;">{item['name']}</span>
+        </div>
+        <button onclick="addToSegment('dimension', '{item['field']}', '{item['name']}', '{category}')" 
+                style="background: transparent; border: none; color: #1473E6; font-size: 16px; cursor: pointer; padding: 2px 6px;">
+            ➕
+        </button>
+    </div>
+    """
+    st.markdown(item_html, unsafe_allow_html=True)
+
+def render_metric_item(item, category):
+    """Render a metric item with add button"""
+    item_html = f"""
+    <div draggable="true"
+         ondragstart="event.dataTransfer.setData('text/plain', JSON.stringify({{type: 'metric', field: '{item['field']}', name: '{item['name']}', category: '{category}', data_type: '{item.get('type', 'number')}'}}))"
+         style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; margin: 2px 0; background: #FFFFFF; border: 1px solid #E1E1E1; border-radius: 4px; font-size: 14px; color: #2C2C2C; cursor: move;">
+        <div style="display: flex; align-items: center;">
+            <span style="margin-right: 6px;">📈</span>
+            <span style="color: #2C2C2C; font-weight: 400;">{item['name']}</span>
+        </div>
+        <button onclick="addToSegment('metric', '{item['field']}', '{item['name']}', '{category}')" 
+                style="background: transparent; border: none; color: #1473E6; font-size: 16px; cursor: pointer; padding: 2px 6px;">
+            ➕
+        </button>
+    </div>
+    """
+    st.markdown(item_html, unsafe_allow_html=True)
+
+def render_segment_item(segment):
+    """Render a segment item"""
+    item_html = f"""
+    <div draggable="true"
+         ondragstart="event.dataTransfer.setData('text/plain', JSON.stringify({{type: 'segment', name: '{segment['name']}'}}))"
+         style="padding: 8px; margin: 2px 0; background: #FFFFFF; border: 1px solid #E1E1E1; border-radius: 4px; cursor: move;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <div style="display: flex; align-items: center;">
+                    <span style="margin-right: 6px;">🎯</span>
+                    <span style="color: #2C2C2C; font-weight: 400; font-size: 14px;">{segment['name']}</span>
+                </div>
+                <div style="font-size: 12px; color: #6E6E6E; margin-top: 2px; margin-left: 24px;">{segment['description']}</div>
+            </div>
+            <button onclick="addSegmentToBuilder('{segment['name']}')" 
+                    style="background: transparent; border: none; color: #1473E6; font-size: 16px; cursor: pointer; padding: 2px 6px;">
+                ➕
+            </button>
+        </div>
+    </div>
+    """
+    st.markdown(item_html, unsafe_allow_html=True)
+
+def add_to_segment(item, item_type, category):
+    """Add a dimension or metric to the current segment"""
+    new_condition = {
+        'id': f"{item_type}_{item['field']}_{len(st.session_state.segment_definition.get('containers', []))}",
+        'field': item['field'],
+        'name': item['name'],
+        'type': item_type,
+        'category': category,
+        'operator': 'equals',
+        'value': '',
+        'data_type': item.get('type', 'string')
+    }
+    
+    # Add to current container or create new one
+    if not st.session_state.segment_definition.get('containers'):
+        st.session_state.segment_definition['containers'] = [{
+            'id': 'container_0',
+            'type': 'hit',
+            'include': True,
+            'conditions': [new_condition],
+            'logic': 'and'
+        }]
+    else:
+        # Add to the first container
+        st.session_state.segment_definition['containers'][0]['conditions'].append(new_condition)
+    
+    st.success(f"Added {item['name']} to segment")
+    st.rerun()
+
+def add_segment_to_builder(segment):
+    """Add a pre-built segment to the builder"""
+    # Load the segment definition
+    if 'definition' in segment:
+        st.session_state.segment_definition = segment['definition'].copy()
+        st.session_state.segment_definition['name'] = segment['name']
+        st.session_state.segment_definition['description'] = segment['description']
+        st.success(f"Loaded segment: {segment['name']}")
+        st.rerun()
+    else:
+        st.warning(f"Segment {segment['name']} has no definition")

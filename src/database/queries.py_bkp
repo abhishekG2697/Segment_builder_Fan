@@ -1,0 +1,284 @@
+def get_segment_statistics(segment_definition):
+    """Get statistics for a segment definition"""
+    from src.utils.query_builder import build_sql_from_segment
+    
+    try:
+        # If no containers, return default stats
+        if not segment_definition.get('containers'):
+            conn = get_db_connection()
+            # Get total counts
+            total_hits = pd.read_sql_query("SELECT COUNT(*) as count FROM hits", conn).iloc[0]['count']
+            total_sessions = pd.read_sql_query("SELECT COUNT(DISTINCT session_id) as count FROM hits", conn).iloc[0]['count']
+            total_visitors = pd.read_sql_query("SELECT COUNT(DISTINCT user_id) as count FROM hits", conn).iloc[0]['count']
+            conn.close()
+            
+            return {
+                'hits': 0,
+                'sessions': 0,
+                'visitors': 0,
+                'hit_percentage': 0,
+                'session_pct': 0,
+                'visitor_pct': 0,
+                'total_hits': total_hits,
+                'total_sessions': total_sessions,
+                'total_visitors': total_visitors
+            }
+        
+        # Build SQL query
+        sql_query = build_sql_from_segment(segment_definition)
+        
+        # Get counts at different levels
+        conn = get_db_connection()
+        
+        stats = {}
+        
+        # Get total counts first
+        total_hits = pd.read_sql_query("SELECT COUNT(*) as count FROM hits", conn).iloc[0]['count']
+        total_sessions = pd.read_sql_query("SELECT COUNT(DISTINCT session_id) as count FROM hits", conn).iloc[0]['count']
+        total_visitors = pd.read_sql_query("SELECT COUNT(DISTINCT user_id) as count FROM hits", conn).iloc[0]['count']
+        
+        # Hit level count
+        hit_query = f"""
+        SELECT COUNT(*) as hit_count
+        FROM ({sql_query}) as segment_data
+        """
+        stats['hits'] = pd.read_sql_query(hit_query, conn).iloc[0]['hit_count']
+        
+        # Session level count
+        session_query = f"""
+        SELECT COUNT(DISTINCT session_id) as session_count
+        FROM ({sql_query}) as segment_data
+        """
+        stats['sessions'] = pd.read_sql_query(session_query, conn).iloc[0]['session_count']
+        
+        # Visitor level count
+        visitor_query = f"""
+        SELECT COUNT(DISTINCT user_id) as visitor_count
+        FROM ({sql_query}) as segment_data
+        """
+        stats['visitors'] = pd.read_sql_query(visitor_query, conn).iloc[0]['visitor_count']
+        
+        # Calculate percentages
+        stats['hit_percentage'] = (stats['hits'] / total_hits * 100) if total_hits > 0 else 0
+        stats['session_pct'] = (stats['sessions'] / total_sessions * 100) if total_sessions > 0 else 0
+        stats['visitor_pct'] = (stats['visitors'] / total_visitors * 100) if total_visitors > 0 else 0
+        
+        # Add totals
+        stats['total_hits'] = total_hits
+        stats['total_sessions'] = total_sessions
+        stats['total_visitors'] = total_visitors
+        
+        conn.close()
+        return stats
+        
+    except Exception as e:
+        print(f"Error getting segment statistics: {str(e)}")
+        return {
+            'hits': 0,
+            'sessions': 0,
+            'visitors': 0,
+            'hit_percentage': 0,
+            'session_pct': 0,
+            'visitor_pct': 0,
+            'error': str(e)
+        }
+import sqlite3
+import pandas as pd
+from pathlib import Path
+
+def get_db_connection():
+    """Get database connection"""
+    db_path = Path("data/analytics.db")
+    return sqlite3.connect(str(db_path))
+
+def execute_segment_query(sql_query, limit=10000):
+    """Execute a segment query and return results as DataFrame"""
+    conn = get_db_connection()
+    try:
+        # Add limit if not present
+        if 'limit' not in sql_query.lower():
+            sql_query = f"{sql_query} LIMIT {limit}"
+        
+        df = pd.read_sql_query(sql_query, conn)
+        return df
+    except Exception as e:
+        raise Exception(f"Query execution failed: {str(e)}")
+    finally:
+        conn.close()
+
+
+def get_available_values(field_name, limit=100):
+    """Get available values for a given field"""
+    conn = get_db_connection()
+    try:
+        # Determine which table contains the field
+        if field_name in ['user_id', 'user_type']:
+            table = 'users'
+        elif field_name in ['session_id']:
+            table = 'sessions'
+        else:
+            table = 'hits'
+        
+        query = f"""
+        SELECT DISTINCT {field_name} as value, COUNT(*) as count
+        FROM {table}
+        WHERE {field_name} IS NOT NULL
+        GROUP BY {field_name}
+        ORDER BY count DESC
+        LIMIT {limit}
+        """
+        
+        df = pd.read_sql_query(query, conn)
+        return df['value'].tolist()
+    except Exception as e:
+        return []
+    finally:
+        conn.close()
+
+def get_field_statistics(field_name):
+    """Get statistics for a numeric field"""
+    conn = get_db_connection()
+    try:
+        # Determine table
+        if field_name in ['total_revenue', 'total_orders', 'avg_session_duration']:
+            table = 'users'
+        elif field_name in ['session_duration', 'pages_viewed']:
+            table = 'sessions'
+        else:
+            table = 'hits'
+        
+        query = f"""
+        SELECT 
+            MIN({field_name}) as min_value,
+            MAX({field_name}) as max_value,
+            AVG({field_name}) as avg_value,
+            COUNT(*) as count
+        FROM {table}
+        WHERE {field_name} IS NOT NULL
+        """
+        
+        df = pd.read_sql_query(query, conn)
+        return df.iloc[0].to_dict()
+    except Exception as e:
+        return {}
+    finally:
+        conn.close()
+
+def validate_segment_sql(sql_query):
+    """Validate a segment SQL query"""
+    conn = get_db_connection()
+    try:
+        # Try to execute with LIMIT 1 to validate syntax
+        test_query = f"{sql_query} LIMIT 1"
+        cursor = conn.cursor()
+        cursor.execute(test_query)
+        return True, "Query is valid"
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+def get_segment_statistics(segment_definition):
+    """Get statistics for a segment definition"""
+    from src.utils.query_builder import build_sql_from_segment
+    
+    try:
+        # Build SQL query
+        sql_query = build_sql_from_segment(segment_definition)
+        
+        # Get counts at different levels
+        conn = get_db_connection()
+        
+        stats = {}
+        
+        # Hit level count
+        hit_query = f"""
+        SELECT COUNT(*) as hit_count
+        FROM ({sql_query}) as segment_data
+        """
+        stats['hits'] = pd.read_sql_query(hit_query, conn).iloc[0]['hit_count']
+        
+        # Session level count
+        session_query = f"""
+        SELECT COUNT(DISTINCT session_id) as session_count
+        FROM ({sql_query}) as segment_data
+        """
+        stats['sessions'] = pd.read_sql_query(session_query, conn).iloc[0]['session_count']
+        
+        # Visitor level count
+        visitor_query = f"""
+        SELECT COUNT(DISTINCT user_id) as visitor_count
+        FROM ({sql_query}) as segment_data
+        """
+        stats['visitors'] = pd.read_sql_query(visitor_query, conn).iloc[0]['visitor_count']
+        
+        # Calculate percentages (assuming total counts)
+        total_hits_query = "SELECT COUNT(*) as total FROM hits"
+        total_hits = pd.read_sql_query(total_hits_query, conn).iloc[0]['total']
+        
+        stats['hit_percentage'] = (stats['hits'] / total_hits * 100) if total_hits > 0 else 0
+        
+        conn.close()
+        return stats
+        
+    except Exception as e:
+        return {
+            'hits': 0,
+            'sessions': 0,
+            'visitors': 0,
+            'hit_percentage': 0,
+            'error': str(e)
+        }
+
+def save_segment(segment_definition):
+    """Save a segment to the database"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        import json
+        
+        cursor.execute("""
+        INSERT INTO segments (name, description, definition, container_type, created_by, tags)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            segment_definition.get('name', 'Unnamed Segment'),
+            segment_definition.get('description', ''),
+            json.dumps(segment_definition),
+            segment_definition.get('container_type', 'hit'),
+            segment_definition.get('created_by', 'User'),
+            json.dumps(segment_definition.get('tags', []))
+        ))
+        
+        conn.commit()
+        return True, "Segment saved successfully"
+    except Exception as e:
+        return False, str(e)
+    finally:
+        conn.close()
+
+def load_saved_segments():
+    """Load all saved segments from database"""
+    conn = get_db_connection()
+    try:
+        query = """
+        SELECT * FROM segments
+        ORDER BY modified_date DESC
+        """
+        
+        df = pd.read_sql_query(query, conn)
+        
+        # Parse JSON fields
+        import json
+        segments = []
+        for _, row in df.iterrows():
+            segment = row.to_dict()
+            segment['definition'] = json.loads(segment['definition'])
+            segment['tags'] = json.loads(segment['tags']) if segment['tags'] else []
+            segments.append(segment)
+        
+        return segments
+    except Exception as e:
+        return []
+    finally:
+        conn.close()

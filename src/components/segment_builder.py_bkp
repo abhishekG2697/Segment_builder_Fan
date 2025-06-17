@@ -1,0 +1,651 @@
+import streamlit as st
+import streamlit.components.v1 as components
+from src.utils.query_builder import render_query_builder
+from src.database.queries import get_segment_statistics, save_segment
+from src.components.drag_drop import render_drag_drop_builder
+from src.components.integrated_builder import render_integrated_builder
+import json
+import uuid
+
+def render_segment_builder(config):
+    """Render the main segment builder interface"""
+    
+    # Segment header section
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        # Title and Description
+        st.session_state.segment_definition['name'] = st.text_input(
+            "Title *", 
+            value=st.session_state.segment_definition['name'],
+            placeholder="Enter segment name",
+            help="Give your segment a descriptive name"
+        )
+        
+        st.session_state.segment_definition['description'] = st.text_area(
+            "Description",
+            value=st.session_state.segment_definition['description'],
+            placeholder="Enter a description for this segment",
+            height=80,
+            help="Describe what this segment captures"
+        )
+    
+    with col2:
+        # Segment visualization
+        render_segment_visualization()
+    
+    # Tags input with Adobe styling
+    tags_value = st.text_input(
+        "Tags", 
+        placeholder="Search tags",
+        help="Add tags to organize your segment",
+        value=""
+    )
+    
+    # Main builder section
+    st.markdown("### Definition *")
+    
+    # Option to use integrated drag-drop builder
+    use_integrated = st.checkbox("Use Integrated Drag & Drop Builder (Beta)", value=False, help="Use the integrated drag and drop interface")
+    
+    if use_integrated:
+        # Hide the sidebar for integrated view
+        st.markdown("""
+        <style>
+        section[data-testid="stSidebar"] {
+            display: none;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Render integrated builder
+        render_integrated_builder(config, st.session_state.segment_definition)
+    else:
+        # Original builder with separate sidebar
+        # Apply Adobe styling to definition area
+        st.markdown("""
+        <style>
+        .definition-container {
+            background-color: #FFFFFF;
+            border: 1px solid #E1E1E1;
+            border-radius: 4px;
+            padding: 20px;
+            margin: 16px 0;
+        }
+        .adobe-select {
+            background-color: #FFFFFF;
+            border: 1px solid #D3D3D3;
+            color: #2C2C2C;
+            padding: 6px 12px;
+            font-size: 14px;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+    
+    # Definition container
+    with st.container():
+        st.markdown('<div class="definition-container">', unsafe_allow_html=True)
+        
+        # Container type selector row
+        col1, col2 = st.columns([2, 4])
+        
+        with col1:
+            st.markdown("**Show**")
+            container_type = st.selectbox(
+                "",
+                options=['hit', 'visit', 'visitor'],
+                format_func=lambda x: get_container_display_name(x, config),
+                label_visibility="collapsed",
+                help="Select the scope of your segment"
+            )
+            st.session_state.segment_definition['container_type'] = container_type
+        
+        # Options button (gear icon)
+        with col2:
+            col2_1, col2_2 = st.columns([4, 1])
+            with col2_2:
+                if st.button("⚙️ Options", key="options_button"):
+                    st.info("Add container, Add container from selection, Exclude")
+        
+        # Segment building area
+        st.markdown("---")
+        
+        # Drag and drop area or containers
+        if not st.session_state.segment_definition.get('containers'):
+            st.markdown("""
+            <div id="dropZone" 
+                 style="background-color: #FAFAFA; border: 1px solid #E1E1E1; border-radius: 4px; padding: 40px; text-align: center; margin: 20px 0; min-height: 200px;">
+                <p style="color: #6E6E6E; margin: 0; font-size: 14px;">
+                    Drag dimensions, metrics, or segments here to build your segment<br>
+                    or click the + button next to items in the left panel
+                </p>
+            </div>
+            
+            <script>
+            // Make drop zone accept drops
+            const dropZone = document.getElementById('dropZone');
+            
+            dropZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                this.style.borderColor = '#1473E6';
+                this.style.backgroundColor = '#F0F8FF';
+            });
+            
+            dropZone.addEventListener('dragleave', function(e) {
+                this.style.borderColor = '#E1E1E1';
+                this.style.backgroundColor = '#FAFAFA';
+            });
+            
+            dropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '#E1E1E1';
+                this.style.backgroundColor = '#FAFAFA';
+                
+                try {
+                    const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+                    
+                    // Show visual feedback
+                    this.innerHTML = '<p style="color: #1473E6; margin: 0; font-size: 14px;">Item added: ' + data.name + '</p>';
+                    
+                    // Trigger the add button click for the corresponding item
+                    if (data.type === 'segment') {
+                        const btnId = 'add_btn_seg_' + data.name.replace(/ /g, '_');
+                        const btn = document.getElementById(btnId);
+                        if (btn) btn.click();
+                    } else {
+                        const btnId = 'add_btn_' + data.field;
+                        const btn = document.getElementById(btnId);
+                        if (btn) btn.click();
+                    }
+                } catch(err) {
+                    console.error('Drop error:', err);
+                }
+            });
+            </script>
+            """, unsafe_allow_html=True)
+            
+            # Add container button with transparent background
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.markdown("""
+                <style>
+                /* Style for Add Container button - transparent with border */
+                div[data-testid="column"] button[key*="add_first_container"] {
+                    background: transparent !important;
+                    border: 1px solid #D3D3D3 !important;
+                    color: #2C2C2C !important;
+                    width: 100% !important;
+                    padding: 8px 16px !important;
+                    font-size: 14px !important;
+                    border-radius: 4px !important;
+                }
+                
+                div[data-testid="column"] button[key*="add_first_container"]:hover {
+                    background: #F5F5F5 !important;
+                    border-color: #1473E6 !important;
+                    color: #1473E6 !important;
+                }
+                
+                /* Plus sign styling */
+                button span {
+                    color: #2C2C2C !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                if st.button("➕ Add Container", key="add_first_container"):
+                    add_new_container()
+        else:
+            # Create drop zones for existing containers
+            st.markdown("""
+            <script>
+            // Enable drop on all container areas
+            function enableContainerDrop(element) {
+                element.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    this.style.borderColor = '#1473E6';
+                    this.style.backgroundColor = '#F0F8FF';
+                });
+                
+                element.addEventListener('dragleave', function(e) {
+                    this.style.borderColor = '#E1E1E1';
+                    this.style.backgroundColor = '#FFFFFF';
+                });
+                
+                element.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    this.style.borderColor = '#E1E1E1';
+                    this.style.backgroundColor = '#FFFFFF';
+                    
+                    try {
+                        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+                        
+                        // Trigger the appropriate add button
+                        if (data.type === 'segment') {
+                            const btnId = 'add_btn_seg_' + data.name.replace(/ /g, '_');
+                            const btn = document.getElementById(btnId);
+                            if (btn) btn.click();
+                        } else {
+                            const btnId = 'add_btn_' + data.field;
+                            const btn = document.getElementById(btnId);
+                            if (btn) btn.click();
+                        }
+                    } catch(err) {
+                        console.error('Drop error:', err);
+                    }
+                });
+            }
+            
+            // Apply to all containers
+            setTimeout(function() {
+                document.querySelectorAll('[id^="container_area_"]').forEach(enableContainerDrop);
+            }, 100);
+            </script>
+            """, unsafe_allow_html=True)
+            
+            # Render existing containers
+            for idx, container in enumerate(st.session_state.segment_definition['containers']):
+                render_container(container, idx, config)
+            
+            # Add container button - transparent style with dark +
+            st.markdown("""
+            <button onclick="document.getElementById('add_another_container').click();" 
+                    style="background: transparent; border: none; color: #2C2C2C; font-size: 14px; cursor: pointer; padding: 8px 0; text-align: left;">
+                <span style="font-size: 18px; margin-right: 4px;">➕</span> Add Container
+            </button>
+            """, unsafe_allow_html=True)
+            
+            if st.button("", key="add_another_container", label_visibility="collapsed"):
+                add_new_container()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col1:
+        container_type = st.selectbox(
+            "Container Type",
+            options=['hit', 'visit', 'visitor'],
+            format_func=lambda x: get_container_display_name(x, config),
+            help="Select the scope of your segment"
+        )
+        st.session_state.segment_definition['container_type'] = container_type
+    
+    with col2:
+        st.markdown("&nbsp;")  # Spacer
+        if st.button("➕ Add Container", type="primary", use_container_width=True):
+            add_new_container()
+    
+    # Segment canvas
+    st.markdown("""
+    <div style="background-color: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <p style="text-align: center; color: #6c757d; margin: 0;">
+            Drag dimensions, metrics, or segments here to build your segment<br>
+            or click the + button next to items in the left panel
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Render existing containers
+    if st.session_state.segment_definition.get('containers'):
+        for idx, container in enumerate(st.session_state.segment_definition['containers']):
+            render_container(container, idx, config)
+    
+    # Save/Cancel buttons
+    st.markdown("---")
+    st.markdown("* All fields with an asterisk are required in order to save.", 
+                unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([3, 1, 1])
+    
+    with col1:
+        # Experience Cloud publishing checkbox
+        publish = st.checkbox("Publish this segment to the Experience Cloud (for Analytics SPA)", value=False)
+    
+    with col2:
+        # Cancel button - transparent
+        st.markdown("""
+        <style>
+        div[data-testid="column"]:nth-of-type(2) button {
+            background: transparent !important;
+            border: 1px solid #D3D3D3 !important;
+            color: #2C2C2C !important;
+            padding: 6px 20px !important;
+            border-radius: 16px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        if st.button("Cancel", key="cancel_btn"):
+            reset_segment()
+    
+    with col3:
+        # Save button - blue background
+        st.markdown("""
+        <style>
+        div[data-testid="column"]:nth-of-type(3) button {
+            background-color: #1473E6 !important;
+            color: white !important;
+            border: none !important;
+            padding: 6px 20px !important;
+            border-radius: 16px !important;
+            font-weight: 400 !important;
+        }
+        div[data-testid="column"]:nth-of-type(3) button:hover {
+            background-color: #0D66D0 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        if st.button("Save", key="save_btn"):
+            if validate_and_save_segment():
+                st.success("Segment saved successfully!")
+                st.balloons()
+
+def render_segment_visualization():
+    """Render the donut chart visualization"""
+    # Get segment statistics
+    stats = get_segment_statistics(st.session_state.segment_definition)
+    
+    # Calculate match percentage
+    total_visitors = stats.get('total_visitors', 1)
+    matched_visitors = stats.get('visitors', 0)
+    match_percentage = int((matched_visitors / total_visitors * 100) if total_visitors > 0 else 0)
+    
+    # Create visualization matching Adobe Analytics exactly
+    st.markdown(f"""
+    <div style="text-align: center; padding: 10px;">
+        <div style="position: relative; width: 120px; height: 120px; margin: 0 auto;">
+            <svg viewBox="0 0 36 36" style="width: 100%; height: 100%;">
+                <!-- Background circle -->
+                <circle cx="18" cy="18" r="15.915"
+                      fill="none"
+                      stroke="#E1E1E1"
+                      stroke-width="2"/>
+                <!-- Outer ring (Page Views) -->
+                <circle cx="18" cy="18" r="15.915"
+                      fill="none"
+                      stroke="#5AA3E0"
+                      stroke-width="2"
+                      stroke-dasharray="{match_percentage}, 100"
+                      stroke-dashoffset="25"
+                      transform="rotate(-90 18 18)"/>
+                <!-- Middle ring (Visits) -->
+                <circle cx="18" cy="18" r="12"
+                      fill="none"
+                      stroke="#AA63C9"
+                      stroke-width="2"
+                      stroke-dasharray="{match_percentage * 0.9}, 100"
+                      stroke-dashoffset="25"
+                      transform="rotate(-90 18 18)"/>
+                <!-- Inner ring (Visitors) -->
+                <circle cx="18" cy="18" r="8"
+                      fill="none"
+                      stroke="#E377AB"
+                      stroke-width="2"
+                      stroke-dasharray="{match_percentage * 0.8}, 100"
+                      stroke-dashoffset="25"
+                      transform="rotate(-90 18 18)"/>
+                <!-- Center text -->
+                <text x="18" y="19" style="font-size: 8px; text-anchor: middle; fill: #2C2C2C; font-weight: 600;">
+                    {match_percentage}%
+                </text>
+            </svg>
+        </div>
+    </div>
+    
+    <div style="margin-top: 10px; font-size: 12px;">
+        <div style="display: flex; align-items: center; justify-content: flex-end; margin: 2px 0;">
+            <span style="width: 12px; height: 2px; background-color: #5AA3E0; display: inline-block; margin-right: 6px;"></span>
+            <span style="color: #6E6E6E; margin-right: 8px;">Page Views</span>
+            <span style="color: #2C2C2C; font-weight: 600; min-width: 60px; text-align: right;">{stats.get('hits', 0):,}</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: flex-end; margin: 2px 0;">
+            <span style="width: 12px; height: 2px; background-color: #AA63C9; display: inline-block; margin-right: 6px;"></span>
+            <span style="color: #6E6E6E; margin-right: 8px;">Visits</span>
+            <span style="color: #2C2C2C; font-weight: 600; min-width: 60px; text-align: right;">{stats.get('sessions', 0):,}</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: flex-end; margin: 2px 0;">
+            <span style="width: 12px; height: 2px; background-color: #E377AB; display: inline-block; margin-right: 6px;"></span>
+            <span style="color: #6E6E6E; margin-right: 8px;">Unique Visitors</span>
+            <span style="color: #2C2C2C; font-weight: 600; min-width: 60px; text-align: right;">{stats.get('visitors', 0):,}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_container(container, idx, config):
+    """Render a single container"""
+    # Use container's ID if exists, otherwise create a unique one
+    container_id = container.get('id', f"container_{idx}_{id(container)}")
+    
+    with st.container():
+        st.markdown(f"""
+        <div id="container_area_{container_id}" style="background-color: #FFFFFF; border: 1px solid #E1E1E1; border-radius: 4px; padding: 16px; margin: 12px 0; position: relative;">
+        """, unsafe_allow_html=True)
+        
+        # Orange indicator for active container
+        st.markdown(f"""
+        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background-color: #FF6B00; border-radius: 4px 0 0 4px;"></div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([3, 3, 1])
+        
+        with col1:
+            # Include/Exclude radio with red dot for Include
+            include_exclude = st.radio(
+                "",
+                options=["● Include", "● Exclude"],
+                key=f"{container_id}_mode",
+                index=0 if container.get('include', True) else 1,
+                horizontal=True,
+                label_visibility="collapsed"
+            )
+            container['include'] = ("Include" in include_exclude)
+        
+        with col2:
+            # Container type selector
+            new_type = st.selectbox(
+                "",
+                options=['hit', 'visit', 'visitor'],
+                format_func=lambda x: get_container_display_name(x, config),
+                key=f"{container_id}_type",
+                index=['hit', 'visit', 'visitor'].index(container.get('type', 'hit')),
+                label_visibility="collapsed"
+            )
+            container['type'] = new_type
+        
+        with col3:
+            # Remove container button - transparent with dark X
+            st.markdown(f"""
+            <button onclick="document.getElementById('{container_id}_remove').click();" 
+                    style="background: transparent; border: none; color: #E34850; font-size: 20px; cursor: pointer; padding: 4px; float: right;">
+                ✕
+            </button>
+            """, unsafe_allow_html=True)
+            if st.button("", key=f"{container_id}_remove", label_visibility="collapsed"):
+                st.session_state.segment_definition['containers'].pop(idx)
+                st.rerun()
+        
+        # Conditions area
+        if container.get('conditions'):
+            for cond_idx, condition in enumerate(container['conditions']):
+                if cond_idx > 0 and len(container['conditions']) > 1:
+                    # Logic operator between conditions
+                    logic = container.get('logic', 'and')
+                    st.markdown(f"""
+                    <div style="text-align: left; margin: 8px 0;">
+                        <select style="background-color: #FFFFFF; border: 1px solid #D3D3D3; padding: 4px 8px; font-size: 14px; color: #2C2C2C;">
+                            <option value="and" {"selected" if logic == "and" else ""}>And</option>
+                            <option value="or" {"selected" if logic == "or" else ""}>Or</option>
+                            <option value="then" {"selected" if logic == "then" else ""}>Then</option>
+                        </select>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                render_condition(condition, idx, cond_idx, config, container_id)
+        else:
+            st.info("Add conditions by clicking '+ Add Rule' or dragging items from the left panel")
+        
+        # Add rule button - transparent background with dark +
+        st.markdown(f"""
+        <button onclick="document.getElementById('{container_id}_add_rule').click();" 
+                style="background: transparent; border: none; color: #2C2C2C; font-size: 14px; cursor: pointer; padding: 8px 0; text-align: left;">
+            <span style="font-size: 18px; margin-right: 4px;">➕</span> Add Rule
+        </button>
+        """, unsafe_allow_html=True)
+        
+        if st.button("", key=f"{container_id}_add_rule", label_visibility="collapsed"):
+            add_new_condition(idx)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+
+def render_condition(condition, container_idx, condition_idx, config, container_id):
+    """Render a single condition"""
+    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+    
+    with col1:
+        # Field display with Adobe styling
+        field_display = condition.get('name', 'Select field')
+        field_type_icon = "📊" if condition.get('type') == 'dimension' else "📈"
+        st.markdown(f"""
+        <div style="background-color: #FFFFFF; border: 1px solid #D3D3D3; border-radius: 4px; padding: 8px 12px; display: flex; align-items: center;">
+            <span style="margin-right: 8px;">{field_type_icon}</span>
+            <span style="color: #2C2C2C; font-size: 14px;">{field_display}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        # Operator selector
+        data_type = condition.get('data_type', 'string')
+        operators = config['operators'].get(data_type, ['equals'])
+        
+        current_op = condition.get('operator', 'equals')
+        if current_op not in operators:
+            current_op = operators[0]
+        
+        operator = st.selectbox(
+            "",
+            options=operators,
+            key=f"{container_id}_operator_{condition_idx}",
+            index=operators.index(current_op),
+            label_visibility="collapsed"
+        )
+        condition['operator'] = operator
+    
+    with col3:
+        # Value input
+        if operator not in ['exists', 'does not exist']:
+            if data_type == 'number':
+                value = st.number_input(
+                    "",
+                    key=f"{container_id}_value_{condition_idx}",
+                    value=float(condition.get('value', 0)) if condition.get('value') else 0.0,
+                    label_visibility="collapsed"
+                )
+            else:
+                # Text input with placeholder
+                value = st.text_input(
+                    "",
+                    value=condition.get('value', ''),
+                    placeholder="Enter Value",
+                    key=f"{container_id}_value_{condition_idx}",
+                    label_visibility="collapsed"
+                )
+            condition['value'] = value
+        else:
+            st.markdown("""
+            <div style="background-color: #F5F5F5; border: 1px solid #D3D3D3; border-radius: 4px; padding: 8px 12px; color: #6E6E6E; font-size: 14px;">
+                No value needed
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with col4:
+        # Remove button - transparent with dark X
+        st.markdown(f"""
+        <button onclick="document.getElementById('{container_id}_remove_cond_{condition_idx}').click();" 
+                style="background: transparent; border: none; color: #2C2C2C; font-size: 18px; cursor: pointer; padding: 4px;">
+            ✕
+        </button>
+        """, unsafe_allow_html=True)
+        if st.button("", key=f"{container_id}_remove_cond_{condition_idx}", label_visibility="collapsed"):
+            st.session_state.segment_definition['containers'][container_idx]['conditions'].pop(condition_idx)
+            st.rerun()
+
+def add_new_container():
+    """Add a new container"""
+    import uuid
+    new_container = {
+        'id': f'container_{uuid.uuid4().hex[:8]}',
+        'type': 'hit',
+        'include': True,
+        'conditions': [],
+        'logic': 'and'
+    }
+    
+    if 'containers' not in st.session_state.segment_definition:
+        st.session_state.segment_definition['containers'] = []
+    
+    st.session_state.segment_definition['containers'].append(new_container)
+    st.rerun()
+
+def add_new_condition(container_idx):
+    """Add a new empty condition to a container"""
+    new_condition = {
+        'id': f'condition_{container_idx}_{len(st.session_state.segment_definition["containers"][container_idx].get("conditions", []))}',
+        'field': '',
+        'name': 'Select a dimension or metric',
+        'type': 'dimension',
+        'category': '',
+        'operator': 'equals',
+        'value': '',
+        'data_type': 'string'
+    }
+    
+    if 'conditions' not in st.session_state.segment_definition['containers'][container_idx]:
+        st.session_state.segment_definition['containers'][container_idx]['conditions'] = []
+    
+    st.session_state.segment_definition['containers'][container_idx]['conditions'].append(new_condition)
+    st.rerun()
+
+def get_container_display_name(container_type, config):
+    """Get display name for container type"""
+    for ct in config['container_types']:
+        if ct['name'].lower() == container_type:
+            return f"{ct['name']} ({ct['alias']})"
+    return container_type.title()
+
+def get_container_color(container_type, config):
+    """Get color for container type"""
+    for ct in config['container_types']:
+        if ct['name'].lower() == container_type:
+            return ct['color']
+    return '#f0f0f0'
+
+def reset_segment():
+    """Reset segment to initial state"""
+    st.session_state.segment_definition = {
+        'name': 'New Segment',
+        'description': '',
+        'container_type': 'visit',
+        'containers': [],
+        'logic': 'and'
+    }
+    st.rerun()
+
+def validate_and_save_segment():
+    """Validate and save the segment"""
+    from src.utils.validators import validate_segment
+    
+    if validate_segment(st.session_state.segment_definition):
+        # Save to database
+        success, message = save_segment(st.session_state.segment_definition)
+        if success:
+            # Add to session saved segments
+            if 'saved_segments' not in st.session_state:
+                st.session_state.saved_segments = []
+            st.session_state.saved_segments.append(st.session_state.segment_definition.copy())
+            return True
+        else:
+            st.error(f"Failed to save: {message}")
+            return False
+    else:
+        st.error("Please fill in all required fields and add at least one condition")
+        return False

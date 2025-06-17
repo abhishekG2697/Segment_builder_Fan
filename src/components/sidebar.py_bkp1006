@@ -1,0 +1,249 @@
+import streamlit as st
+import uuid
+
+def render_sidebar(config):
+    """Render the sidebar with dimensions, metrics, and segments"""
+    
+    # Search box with proper functionality
+    search_query = st.text_input(
+        "🔍 Search components", 
+        placeholder="Search...",
+        key="sidebar_search"
+    )
+    
+    # Filter dropdown
+    filter_option = st.selectbox(
+        "Filter",
+        ["All Components", "Dimensions", "Metrics", "Segments"],
+        label_visibility="collapsed",
+        key="sidebar_filter"
+    )
+    
+    # Define segment definitions for pre-built segments
+    segment_definitions = {
+        'High Value Customers': {
+            'name': 'High Value Customers',
+            'description': 'Visitors with revenue > $500',
+            'container_type': 'visitor',
+            'containers': [{
+                'id': 'container_high_value',
+                'type': 'visitor',
+                'include': True,
+                'conditions': [{
+                    'id': 'cond_revenue',
+                    'field': 'revenue',
+                    'name': 'Revenue',
+                    'type': 'metric',
+                    'category': 'Commerce',
+                    'operator': 'is greater than',
+                    'value': 500,
+                    'data_type': 'number'
+                }],
+                'logic': 'and'
+            }]
+        },
+        'Mobile Users': {
+            'name': 'Mobile Users',
+            'description': 'All mobile device traffic',
+            'container_type': 'hit',
+            'containers': [{
+                'id': 'container_mobile',
+                'type': 'hit',
+                'include': True,
+                'conditions': [{
+                    'id': 'cond_device',
+                    'field': 'device_type',
+                    'name': 'Device Type',
+                    'type': 'dimension',
+                    'category': 'Browser',
+                    'operator': 'equals',
+                    'value': 'Mobile',
+                    'data_type': 'string'
+                }],
+                'logic': 'and'
+            }]
+        },
+        'Engaged Sessions': {
+            'name': 'Engaged Sessions',
+            'description': 'Sessions with 5+ page views',
+            'container_type': 'visit',
+            'containers': [{
+                'id': 'container_engaged',
+                'type': 'visit',
+                'include': True,
+                'conditions': [{
+                    'id': 'cond_pageviews',
+                    'field': 'total_hits',  # Changed from page_views to total_hits (actual column)
+                    'name': 'Page Views',
+                    'type': 'metric',
+                    'category': 'Engagement',
+                    'operator': 'is greater than or equal to',
+                    'value': 5,
+                    'data_type': 'number'
+                }],
+                'logic': 'and'
+            }]
+        }
+    }
+    
+    # Dimensions section
+    if filter_option in ["All Components", "Dimensions"]:
+        dimension_count = sum(len(cat['items']) for cat in config['dimensions'])
+        
+        with st.expander(f"📊 DIMENSIONS ({dimension_count})", expanded=True):
+            # Apply search filter
+            for category in config['dimensions']:
+                items_to_show = []
+                for item in category['items']:
+                    if not search_query or search_query.lower() in item['name'].lower():
+                        items_to_show.append(item)
+                
+                if items_to_show:
+                    st.markdown(f"**{category['category']}**")
+                    for item in items_to_show:
+                        render_dimension_item(item, category['category'])
+    
+    # Metrics section
+    if filter_option in ["All Components", "Metrics"]:
+        metric_count = sum(len(cat['items']) for cat in config['metrics'])
+        
+        with st.expander(f"📈 METRICS ({metric_count})", expanded=True):
+            # Apply search filter
+            for category in config['metrics']:
+                items_to_show = []
+                for item in category['items']:
+                    if not search_query or search_query.lower() in item['name'].lower():
+                        items_to_show.append(item)
+                
+                if items_to_show:
+                    st.markdown(f"**{category['category']}**")
+                    for item in items_to_show:
+                        render_metric_item(item, category['category'])
+    
+    # Segments section
+    if filter_option in ["All Components", "Segments"]:
+        with st.expander(f"🎯 SEGMENTS ({len(config['segments'])})", expanded=True):
+            # Apply search filter
+            for segment in config['segments']:
+                if not search_query or search_query.lower() in segment['name'].lower():
+                    # Add the full definition to the segment
+                    segment_with_def = segment.copy()
+                    if segment['name'] in segment_definitions:
+                        segment_with_def['definition'] = segment_definitions[segment['name']]
+                    render_segment_item(segment_with_def)
+
+def render_dimension_item(item, category):
+    """Render a dimension item with add button"""
+    col1, col2 = st.columns([5, 1])
+    
+    with col1:
+        st.markdown(f"""
+        <div class="sidebar-component-item" style="padding: 8px; border: 1px solid #E1E1E1; border-radius: 4px; background: #FFFFFF;">
+            <span style="color: #2C2C2C;">📊 {item['name']}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        # Use a clean button without background
+        st.markdown("""
+        <style>
+        div[data-testid="column"]:last-child button {
+            background-color: transparent !important;
+            border: none !important;
+            color: #2C2C2C !important;
+            padding: 4px !important;
+        }
+        div[data-testid="column"]:last-child button:hover {
+            color: #1473E6 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        if st.button("➕", key=f"add_dim_{item['field']}", help=f"Add {item['name']}"):
+            add_to_segment(item, 'dimension', category)
+
+def render_metric_item(item, category):
+    """Render a metric item with add button"""
+    col1, col2 = st.columns([5, 1])
+    
+    with col1:
+        st.markdown(f"""
+        <div class="sidebar-component-item" style="padding: 8px; border: 1px solid #E1E1E1; border-radius: 4px; background: #FFFFFF;">
+            <span style="color: #2C2C2C;">📈 {item['name']}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        if st.button("➕", key=f"add_met_{item['field']}", help=f"Add {item['name']}"):
+            add_to_segment(item, 'metric', category)
+
+def render_segment_item(segment):
+    """Render a segment item"""
+    col1, col2 = st.columns([5, 1])
+    
+    with col1:
+        st.markdown(f"""
+        <div class="sidebar-component-item" style="padding: 12px; border: 1px solid #E1E1E1; border-radius: 4px; background: #FFFFFF;">
+            <div>
+                <span style="color: #2C2C2C; font-weight: 500;">🎯 {segment['name']}</span>
+                <div style="font-size: 12px; color: #6E6E6E; margin-top: 4px;">
+                    {segment['description']}
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        if st.button("➕", key=f"add_seg_{segment['name'].replace(' ', '_')}", help=f"Add {segment['name']}"):
+            add_segment_to_builder(segment)
+
+def add_to_segment(item, item_type, category):
+    """Add a dimension or metric to the current segment"""
+    new_condition = {
+        'id': f"{item_type}_{item['field']}_{uuid.uuid4().hex[:8]}",
+        'field': item['field'],
+        'name': item['name'],
+        'type': item_type,
+        'category': category,
+        'operator': 'equals',
+        'value': '',
+        'data_type': item.get('type', 'string')
+    }
+    
+    # Add to current container or create new one
+    if not st.session_state.segment_definition.get('containers'):
+        st.session_state.segment_definition['containers'] = [{
+            'id': f'container_{uuid.uuid4().hex[:8]}',
+            'type': 'hit',
+            'include': True,
+            'conditions': [new_condition],
+            'logic': 'and'
+        }]
+    else:
+        # Add to the first container
+        if st.session_state.segment_definition['containers']:
+            st.session_state.segment_definition['containers'][0]['conditions'].append(new_condition)
+        else:
+            st.session_state.segment_definition['containers'].append({
+                'id': f'container_{uuid.uuid4().hex[:8]}',
+                'type': 'hit',
+                'include': True,
+                'conditions': [new_condition],
+                'logic': 'and'
+            })
+    
+    st.success(f"Added {item['name']} to segment")
+    st.rerun()
+
+def add_segment_to_builder(segment):
+    """Add a pre-built segment to the builder"""
+    # Check if segment has a full definition
+    if 'definition' in segment and segment['definition']:
+        # Load the complete segment definition
+        st.session_state.segment_definition = segment['definition'].copy()
+        st.success(f"Loaded segment: {segment['name']}")
+    else:
+        # If no definition, create basic structure
+        st.warning(f"Segment {segment['name']} has no complete definition.")
+    
+    st.rerun()

@@ -1,0 +1,424 @@
+/* Adobe Analytics Style Theme - Exact Match */
+
+/* Root variables */
+:root {
+    --adobe-primary: #1473E6;
+    --adobe-primary-hover: #0D66D0;
+    --adobe-text-dark: #2C2C2C;
+    --adobe-text-secondary: #6E6E6E;
+    --adobe-background: #FFFFFF;
+    --adobe-background-light: #F5F5F5;
+    --adobe-border: #E1E1E1;
+    --adobe-border-dark: #D3D3D3;
+    --adobe-orange: #E34850;
+    --adobe-green: #12B886;
+    --adobe-container-bg: #FAFAFA;
+}
+
+/* Reset and base styles */
+* {
+    box-sizing: border-box;
+}
+
+/* Main app styling */
+.stApp {
+    background-color: var(--adobe-background-light);
+    font-family: adobe-clean, 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--adobe-text-dark);
+}
+
+/* Override Streamlit defaults */
+.main .block-container {
+    padding: 1rem 2rem;
+    max-width: 100%;
+}
+
+/* Header styling */
+.main-header {
+    background-color: var(--adobe-background);
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--adobe-border);
+    margin: -1rem -2rem 1rem -2rem;
+}
+
+.main-header h2 {
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--adobe-text-dark);
+    margin: 0;
+}
+
+/* Sidebar styling */
+section[data-testid="stSidebar"] {
+    background-color: var(--adobe-background);
+    border-right: 1px solid var(--adobe-border);
+    width: 280px !important;
+    min-width: 280px !important;
+}
+
+section[data-testid="stSidebar"] > div {
+    padding: 16px;
+    background-color: var(--adobe-background);
+}
+
+/* Section headers with counts */
+.stExpander {
+    border: none;
+    background-color: transparent;
+}
+
+.streamlit-expanderHeader {
+    background-color: var(--adobe-background) !important;
+    border: none !important;
+    padding: 8px 0 !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    color: var(--adobe-text-dark) !important;
+    text-transform: uppercase;
+}
+
+.streamlit-expanderHeader:hover {
+    background-color: var(--adobe-background) !important;
+}
+
+/* Orange count badges */
+.streamlit-expanderHeader::after {
+    content: attr(data-count);
+    color: var(--adobe-orange);
+    font-weight: 700;
+    margin-left: 8px;
+}
+
+/* Sidebar items */
+.draggable-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    margin: 4px 0;
+    background-color: var(--adobe-background);
+    border: 1px solid var(--adobe-border);
+    border-radius: 4px;
+    cursor: move;
+    transition: all 0.15s ease;
+    font-size: 14px;
+    color: var(--adobe-text-dark);
+}
+
+.draggable-item:hover {
+    background-color: #F0F8FF;
+    border-color: var(--adobe-primary);
+    transform: translateX(3px);
+}
+
+.dimension-item {
+    border-left: 3px solid #FF6B00;
+}
+
+.metric-item {
+    border-left: 3px solid #44B556;
+}
+
+.segment-item {
+    border-left: 3px solid #6B46C1;
+}
+
+/* Input fields */
+.stTextInput > div > div > input,
+.stSelectbox > div > div > select,
+.stTextArea > div > div > textarea {
+    background-color: var(--adobe-background);
+    border: 1px solid var(--adobe-border-dark);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 14px;
+    color: var(--adobe-text-dark);
+    transition: all 0.15s ease;
+}
+
+.stTextInput > div > div > input:focus,
+.stSelectbox > div > div > select:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: var(--adobe-primary);
+    box-shadow: 0 0 0 1px var(--adobe-primary);
+    outline: none;
+}
+
+/* Labels */
+.stTextInput > label,
+.stSelectbox > label,
+.stTextArea > label {
+    color: var(--adobe-text-dark);
+    font-size: 14px;
+    font-weight: 400;
+    margin-bottom: 4px;
+}
+
+/* Buttons */
+.stButton > button {
+    background-color: var(--adobe-primary);
+    color: white;
+    border: none;
+    border-radius: 16px;
+    padding: 6px 14px;
+    font-size: 14px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.stButton > button:hover {
+    background-color: var(--adobe-primary-hover);
+    transform: translateY(-1px);
+}
+
+.stButton > button[kind="secondary"] {
+    background-color: var(--adobe-background);
+    color: var(--adobe-text-dark);
+    border: 1px solid var(--adobe-border-dark);
+}
+
+.stButton > button[kind="secondary"]:hover {
+    background-color: var(--adobe-background-light);
+    border-color: var(--adobe-text-secondary);
+}
+
+/* Tabs */
+.stTabs {
+    background-color: transparent;
+}
+
+.stTabs [data-baseweb="tab-list"] {
+    background-color: transparent;
+    border-bottom: 1px solid var(--adobe-border);
+    gap: 24px;
+    padding-left: 0;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--adobe-text-secondary);
+    font-size: 14px;
+    font-weight: 400;
+    padding: 8px 0;
+    margin-right: 24px;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    color: var(--adobe-text-dark);
+    background-color: transparent;
+}
+
+.stTabs [aria-selected="true"] {
+    color: var(--adobe-text-dark);
+    border-bottom-color: var(--adobe-text-dark);
+    background-color: transparent;
+}
+
+/* Segment builder area */
+.segment-canvas {
+    background-color: var(--adobe-container-bg);
+    border: 1px solid var(--adobe-border);
+    border-radius: 4px;
+    padding: 20px;
+    margin: 16px 0;
+}
+
+/* Container styling */
+.segment-container {
+    background-color: var(--adobe-background);
+    border: 1px solid var(--adobe-border);
+    border-radius: 4px;
+    padding: 16px;
+    margin: 12px 0;
+}
+
+/* Definition area */
+.definition-area {
+    background-color: var(--adobe-background);
+    border: 1px solid var(--adobe-border);
+    border-radius: 4px;
+    padding: 20px;
+    margin: 16px 0;
+}
+
+/* Orange vertical line for active items */
+.active-indicator {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background-color: #FF6B00;
+    border-radius: 3px 0 0 3px;
+}
+
+/* Metrics/visualization */
+[data-testid="metric-container"] {
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    text-align: right;
+}
+
+[data-testid="metric-container"] label {
+    color: var(--adobe-text-secondary);
+    font-size: 13px;
+    font-weight: 400;
+}
+
+[data-testid="metric-container"] [data-testid="metric-value"] {
+    color: var(--adobe-text-dark);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* Radio buttons */
+div[role="radiogroup"] {
+    background-color: transparent;
+    padding: 0;
+    gap: 16px;
+}
+
+div[role="radiogroup"] label {
+    background-color: transparent;
+    padding: 4px 0;
+    color: var(--adobe-text-dark);
+    font-size: 14px;
+}
+
+/* Checkboxes */
+.stCheckbox {
+    color: var(--adobe-text-dark);
+    font-size: 14px;
+}
+
+/* Segment visualization donut */
+.segment-viz svg {
+    filter: none;
+}
+
+.segment-viz text {
+    fill: var(--adobe-text-dark);
+    font-weight: 600;
+}
+
+/* Options menu */
+.options-menu {
+    background-color: var(--adobe-background);
+    border: 1px solid var(--adobe-border);
+    border-radius: 4px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    padding: 8px 0;
+}
+
+.options-menu-item {
+    padding: 8px 16px;
+    color: var(--adobe-text-dark);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.options-menu-item:hover {
+    background-color: var(--adobe-background-light);
+}
+
+/* Search box */
+input[type="text"][placeholder*="Search"] {
+    background-color: var(--adobe-background);
+    border: 1px solid var(--adobe-border);
+    padding: 6px 12px 6px 32px;
+    font-size: 14px;
+    color: var(--adobe-text-dark);
+}
+
+/* Show All button */
+button:contains("Show All") {
+    background: none;
+    border: none;
+    color: var(--adobe-primary);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 4px 0;
+    text-decoration: none;
+}
+
+button:contains("Show All"):hover {
+    text-decoration: underline;
+}
+
+/* Condition styling */
+.condition-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    background-color: var(--adobe-background);
+    border: 1px solid var(--adobe-border);
+    border-radius: 4px;
+    margin: 8px 0;
+}
+
+/* Logic operators */
+.logic-operator {
+    text-align: center;
+    padding: 4px 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--adobe-text-secondary);
+    text-transform: lowercase;
+}
+
+/* Remove default Streamlit styling */
+.css-1d391kg {
+    background-color: var(--adobe-background);
+}
+
+.css-1d391kg p {
+    color: var(--adobe-text-dark);
+}
+
+/* Data tables */
+.stDataFrame {
+    border: 1px solid var(--adobe-border);
+    border-radius: 4px;
+}
+
+.stDataFrame th {
+    background-color: var(--adobe-background-light);
+    color: var(--adobe-text-dark);
+    font-weight: 600;
+    font-size: 13px;
+    text-transform: none;
+    border-bottom: 1px solid var(--adobe-border);
+}
+
+.stDataFrame td {
+    color: var(--adobe-text-dark);
+    font-size: 13px;
+    border-bottom: 1px solid var(--adobe-border);
+}
+
+/* Hide Streamlit branding */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--adobe-background-light);
+}
+
+::-webkit-scrollbar-thumb {
+    background: #C4C4C4;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #A0A0A0;
+}

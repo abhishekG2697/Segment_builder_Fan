@@ -1,0 +1,386 @@
+import streamlit as st
+import json
+import os
+from datetime import datetime
+import pandas as pd
+from src.database.queries import load_saved_segments
+
+def render_library():
+    """Render the segment library interface"""
+    
+    st.markdown("### 📚 Segment Library")
+    
+    # Search and filter
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
+    with col1:
+        search_term = st.text_input(
+            "Search segments",
+            placeholder="Search by name, description, or tags...",
+            key="library_search"
+        )
+    
+    with col2:
+        filter_type = st.selectbox(
+            "Filter by type",
+            options=["All", "Hit", "Visit", "Visitor"],
+            key="library_filter_type"
+        )
+    
+    with col3:
+        sort_by = st.selectbox(
+            "Sort by",
+            options=["Name", "Created Date", "Modified Date", "Usage"],
+            key="library_sort"
+        )
+    
+    # Action buttons
+    col1, col2, col3 = st.columns([1, 1, 4])
+    
+    with col1:
+        if st.button("📥 Import Segment", key="import_segment_btn"):
+            import_segment()
+    
+    with col2:
+        if st.button("📤 Export Selected", key="export_segments_btn"):
+            export_selected_segments()
+    
+    # Segment grid
+    render_segment_grid(search_term, filter_type, sort_by)
+
+def render_segment_grid(search_term, filter_type, sort_by):
+    """Render the grid of saved segments"""
+    
+    # Get saved segments
+    saved_segments = get_saved_segments()
+    
+    # Filter segments
+    filtered_segments = []
+    for segment in saved_segments:
+        # Apply search filter
+        if search_term:
+            search_lower = search_term.lower()
+            if not any([
+                search_lower in segment.get('name', '').lower(),
+                search_lower in segment.get('description', '').lower(),
+                any(search_lower in tag for tag in segment.get('tags', []))
+            ]):
+                continue
+        
+        # Apply type filter
+        if filter_type != "All" and segment.get('container_type', '').lower() != filter_type.lower():
+            continue
+        
+        filtered_segments.append(segment)
+    
+    # Sort segments
+    if sort_by == "Name":
+        filtered_segments.sort(key=lambda x: x.get('name', ''))
+    elif sort_by == "Created Date":
+        filtered_segments.sort(key=lambda x: x.get('created_date', ''), reverse=True)
+    elif sort_by == "Modified Date":
+        filtered_segments.sort(key=lambda x: x.get('modified_date', ''), reverse=True)
+    elif sort_by == "Usage":
+        filtered_segments.sort(key=lambda x: x.get('usage_count', 0), reverse=True)
+    
+    # Display segments
+    if filtered_segments:
+        # Create columns for grid layout
+        cols_per_row = 3
+        for i in range(0, len(filtered_segments), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j in range(cols_per_row):
+                if i + j < len(filtered_segments):
+                    with cols[j]:
+                        render_segment_card(filtered_segments[i + j], i + j)
+    else:
+        st.info("No segments found. Create your first segment in the Segment Builder tab!")
+
+def render_segment_card(segment, idx):
+    """Render a single segment card"""
+    with st.container():
+        st.markdown(
+            f"""
+            <div class="segment-card">
+                <div class="segment-card-header">
+                    <h4>{segment.get('name', 'Unnamed Segment')}</h4>
+                    <span class="segment-type-badge {segment.get('container_type', 'hit')}-badge">
+                        {segment.get('container_type', 'hit').upper()}
+                    </span>
+                </div>
+                <div class="segment-card-description">
+                    {segment.get('description', 'No description')}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # Metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.caption(f"📊 {segment.get('usage_count', 0)} uses")
+        with col2:
+            st.caption(f"📅 {segment.get('created_date', 'Unknown')}")
+        with col3:
+            st.caption(f"👤 {segment.get('created_by', 'Unknown')}")
+        
+        # Actions
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if st.button("📝", key=f"edit_segment_{idx}", help="Edit segment"):
+                load_segment_to_builder(segment)
+        
+        with col2:
+            if st.button("📋", key=f"duplicate_segment_{idx}", help="Duplicate segment"):
+                duplicate_segment(segment)
+        
+        with col3:
+            if st.button("📤", key=f"export_segment_{idx}", help="Export segment"):
+                export_segment(segment)
+        
+        with col4:
+            if st.button("🗑️", key=f"delete_segment_{idx}", help="Delete segment"):
+                delete_segment(segment)
+
+def get_saved_segments():
+    """Get list of saved segments"""
+    # Sample segments with complete definitions
+    sample_segments = [
+        {
+            'name': 'High Value Customers',
+            'description': 'Visitors who have made purchases over $500 in the last 30 days',
+            'container_type': 'visitor',
+            'created_date': '2024-01-15',
+            'created_by': 'Admin',
+            'usage_count': 45,
+            'tags': ['revenue', 'customers'],
+            'definition': {
+                'name': 'High Value Customers',
+                'description': 'Visitors who have made purchases over $500 in the last 30 days',
+                'container_type': 'visitor',
+                'containers': [{
+                    'type': 'visitor',
+                    'include': True,
+                    'conditions': [{
+                        'field': 'revenue',
+                        'name': 'Revenue',
+                        'type': 'metric',
+                        'operator': 'is greater than',
+                        'value': 500,
+                        'data_type': 'number'
+                    }],
+                    'logic': 'and'
+                }],
+                'logic': 'and'
+            }
+        },
+        {
+            'name': 'Mobile Traffic',
+            'description': 'All sessions from mobile devices',
+            'container_type': 'visit',
+            'created_date': '2024-01-20',
+            'created_by': 'Marketing Team',
+            'usage_count': 128,
+            'tags': ['mobile', 'device'],
+            'definition': {
+                'name': 'Mobile Traffic',
+                'description': 'All sessions from mobile devices',
+                'container_type': 'visit',
+                'containers': [{
+                    'type': 'visit',
+                    'include': True,
+                    'conditions': [{
+                        'field': 'device_type',
+                        'name': 'Device Type',
+                        'type': 'dimension',
+                        'operator': 'equals',
+                        'value': 'Mobile',
+                        'data_type': 'string'
+                    }],
+                    'logic': 'and'
+                }],
+                'logic': 'and'
+            }
+        },
+        {
+            'name': 'Cart Abandoners',
+            'description': 'Users who added items to cart but did not complete purchase',
+            'container_type': 'visitor',
+            'created_date': '2024-02-01',
+            'created_by': 'Analytics Team',
+            'usage_count': 67,
+            'tags': ['cart', 'conversion'],
+            'definition': {
+                'name': 'Cart Abandoners',
+                'description': 'Users who added items to cart but did not complete purchase',
+                'container_type': 'visitor',
+                'containers': [{
+                    'type': 'visitor',
+                    'include': True,
+                    'conditions': [
+                        {
+                            'field': 'cart_additions',
+                            'name': 'Cart Additions',
+                            'type': 'metric',
+                            'operator': 'is greater than',
+                            'value': 0,
+                            'data_type': 'number'
+                        },
+                        {
+                            'field': 'orders',
+                            'name': 'Orders',
+                            'type': 'metric',
+                            'operator': 'equals',
+                            'value': 0,
+                            'data_type': 'number'
+                        }
+                    ],
+                    'logic': 'and'
+                }],
+                'logic': 'and'
+            }
+        },
+        {
+            'name': 'Engaged Visitors',
+            'description': 'Visitors who viewed 5+ pages in a session',
+            'container_type': 'visit',
+            'created_date': '2024-02-05',
+            'created_by': 'Product Team',
+            'usage_count': 89,
+            'tags': ['engagement', 'behavior'],
+            'definition': {
+                'name': 'Engaged Visitors',
+                'description': 'Visitors who viewed 5+ pages in a session',
+                'container_type': 'visit',
+                'containers': [{
+                    'type': 'visit',
+                    'include': True,
+                    'conditions': [{
+                        'field': 'page_views',
+                        'name': 'Page Views',
+                        'type': 'metric',
+                        'operator': 'is greater than or equal to',
+                        'value': 5,
+                        'data_type': 'number'
+                    }],
+                    'logic': 'and'
+                }],
+                'logic': 'and'
+            }
+        },
+        {
+            'name': 'Chrome Users from US',
+            'description': 'All visitors using Chrome browser from United States',
+            'container_type': 'hit',
+            'created_date': '2024-02-10',
+            'created_by': 'Tech Team',
+            'usage_count': 156,
+            'tags': ['browser', 'geography'],
+            'definition': {
+                'name': 'Chrome Users from US',
+                'description': 'All visitors using Chrome browser from United States',
+                'container_type': 'hit',
+                'containers': [{
+                    'type': 'hit',
+                    'include': True,
+                    'conditions': [
+                        {
+                            'field': 'browser_name',
+                            'name': 'Browser Name',
+                            'type': 'dimension',
+                            'operator': 'equals',
+                            'value': 'Chrome',
+                            'data_type': 'string'
+                        },
+                        {
+                            'field': 'country',
+                            'name': 'Country',
+                            'type': 'dimension',
+                            'operator': 'equals',
+                            'value': 'US',
+                            'data_type': 'string'
+                        }
+                    ],
+                    'logic': 'and'
+                }],
+                'logic': 'and'
+            }
+        }
+    ]
+    
+    # Try to load from database
+    try:
+        db_segments = load_saved_segments()
+        if db_segments:
+            sample_segments.extend(db_segments)
+    except:
+        pass
+    
+    # Add session segments
+    if 'saved_segments' in st.session_state:
+        sample_segments.extend(st.session_state.saved_segments)
+    
+    return sample_segments
+
+def load_segment_to_builder(segment):
+    """Load a segment into the builder for editing"""
+    st.session_state.segment_definition = segment.get('definition', {})
+    st.session_state.segment_definition['name'] = segment.get('name', '')
+    st.session_state.segment_definition['description'] = segment.get('description', '')
+    st.session_state.active_tab = 'builder'
+    st.success(f"Loaded segment: {segment.get('name', 'Unnamed')}")
+    st.rerun()
+
+def duplicate_segment(segment):
+    """Create a duplicate of the segment"""
+    new_segment = segment.copy()
+    new_segment['name'] = f"{segment.get('name', 'Unnamed')} - Copy"
+    new_segment['created_date'] = datetime.now().strftime('%Y-%m-%d')
+    new_segment['usage_count'] = 0
+    
+    st.session_state.saved_segments.append(new_segment)
+    st.success(f"Duplicated segment: {new_segment['name']}")
+    st.rerun()
+
+def export_segment(segment):
+    """Export a single segment as JSON"""
+    segment_json = json.dumps(segment, indent=2)
+    st.download_button(
+        label=f"Download {segment.get('name', 'segment')}.json",
+        data=segment_json,
+        file_name=f"{segment.get('name', 'segment').lower().replace(' ', '_')}.json",
+        mime="application/json"
+    )
+
+def export_selected_segments():
+    """Export multiple selected segments"""
+    st.info("Select segments to export functionality would be implemented here")
+
+def delete_segment(segment):
+    """Delete a segment from the library"""
+    if st.session_state.get('confirm_delete') == segment.get('name'):
+        # Perform deletion
+        st.warning(f"Deleted segment: {segment.get('name', 'Unnamed')}")
+        st.session_state.confirm_delete = None
+    else:
+        st.session_state.confirm_delete = segment.get('name')
+        st.warning(f"Click delete again to confirm deletion of: {segment.get('name', 'Unnamed')}")
+
+def import_segment():
+    """Import segment from JSON file"""
+    uploaded_file = st.file_uploader(
+        "Choose a segment JSON file",
+        type=['json'],
+        key="segment_uploader"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            segment_data = json.load(uploaded_file)
+            st.session_state.saved_segments.append(segment_data)
+            st.success(f"Imported segment: {segment_data.get('name', 'Unnamed')}")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error importing segment: {str(e)}")

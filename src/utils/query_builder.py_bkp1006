@@ -1,0 +1,242 @@
+import streamlit as st
+import json
+
+def build_sql_from_segment(segment_definition):
+    """Build SQL query from segment definition"""
+    
+    # Container type determines the aggregation level
+    container_type = segment_definition.get('container_type', 'hit')
+    
+    # Build WHERE clause from containers
+    where_clauses = []
+    
+    for container in segment_definition.get('containers', []):
+        container_where = build_container_where_clause(container)
+        if container_where:
+            if not container.get('include', True):
+                container_where = f"NOT ({container_where})"
+            where_clauses.append(container_where)
+    
+    # Combine WHERE clauses
+    if where_clauses:
+        main_logic = segment_definition.get('logic', 'and').upper()
+        where_clause = f" {main_logic} ".join(f"({clause})" for clause in where_clauses)
+    else:
+        where_clause = "1=1"
+    
+    # Build final query based on container type
+    if container_type == 'hit':
+        query = f"""
+        SELECT h.*, u.user_type, s.total_hits, s.total_revenue as session_revenue
+        FROM hits h
+        LEFT JOIN users u ON h.user_id = u.user_id
+        LEFT JOIN sessions s ON h.session_id = s.session_id
+        WHERE {where_clause}
+        ORDER BY h.timestamp DESC
+        """
+    elif container_type == 'visit':
+        query = f"""
+        SELECT h.*, u.user_type, s.total_hits, s.total_revenue as session_revenue
+        FROM hits h
+        LEFT JOIN users u ON h.user_id = u.user_id
+        LEFT JOIN sessions s ON h.session_id = s.session_id
+        WHERE h.session_id IN (
+            SELECT DISTINCT h2.session_id
+            FROM hits h2
+            LEFT JOIN sessions s2 ON h2.session_id = s2.session_id
+            LEFT JOIN users u2 ON h2.user_id = u2.user_id
+            WHERE {where_clause}
+        )
+        ORDER BY h.timestamp DESC
+        """
+    else:  # visitor
+        query = f"""
+        SELECT h.*, u.user_type, s.total_hits, s.total_revenue as session_revenue
+        FROM hits h
+        LEFT JOIN users u ON h.user_id = u.user_id
+        LEFT JOIN sessions s ON h.session_id = s.session_id
+        WHERE h.user_id IN (
+            SELECT DISTINCT h2.user_id
+            FROM hits h2
+            LEFT JOIN sessions s2 ON h2.session_id = s2.session_id
+            LEFT JOIN users u2 ON h2.user_id = u2.user_id
+            WHERE {where_clause}
+        )
+        ORDER BY h.timestamp DESC
+        """
+    
+    return query
+
+def build_container_where_clause(container):
+    """Build WHERE clause for a container"""
+    conditions = container.get('conditions', [])
+    if not conditions:
+        return ""
+    
+    condition_clauses = []
+    
+    for condition in conditions:
+        clause = build_condition_clause(condition)
+        if clause:
+            condition_clauses.append(clause)
+    
+    if condition_clauses:
+        logic = container.get('logic', 'and').upper()
+        # Handle THEN operator (sequential)
+        if logic == 'THEN':
+            # For sequential, we need to ensure order
+            # This is a simplified version
+            return " AND ".join(condition_clauses)
+        else:
+            return f" {logic} ".join(condition_clauses)
+    
+    return ""
+
+def build_condition_clause(condition):
+    """Build SQL clause for a single condition"""
+    field = condition.get('field', '')
+    operator = condition.get('operator', 'equals')
+    value = condition.get('value', '')
+    data_type = condition.get('data_type', 'string')
+    
+    if not field:
+        return ""
+    
+    # Skip segment references - they should be expanded before reaching here
+    if field == 'segment_reference' or data_type == 'segment':
+        return ""  # Skip segment references
+    
+    # Map metric names to actual database columns
+    field_mapping = {
+        'page_views': 'total_hits',  # Map page_views to total_hits
+        'orders': 'total_orders',     # Map orders to total_orders
+    }
+    
+    # Use mapped field if available
+    actual_field = field_mapping.get(field, field)
+    
+    # Determine which table the field belongs to
+    hits_fields = ['hit_id', 'timestamp', 'user_id', 'session_id', 'page_url', 'page_title', 'page_type', 
+                   'browser_name', 'browser_version', 'device_type', 'country', 
+                   'city', 'traffic_source', 'traffic_medium', 'campaign', 
+                   'revenue', 'products_viewed', 'cart_additions', 'time_on_page', 'bounce']
+    
+    session_fields = ['total_hits', 'total_revenue', 'session_duration', 'pages_viewed']
+    
+    user_fields = ['user_type', 'total_sessions', 'total_orders', 'avg_session_duration']
+    
+    # Add table prefix based on the query context
+    if actual_field in session_fields:
+        actual_field = f"s.{actual_field}"
+    elif actual_field in user_fields:
+        actual_field = f"u.{actual_field}"
+    elif actual_field in hits_fields:
+        actual_field = f"h.{actual_field}"
+    # If field not found in any table, assume it's in hits table
+    else:
+        actual_field = f"h.{actual_field}"
+    
+    # Escape single quotes in string values
+    if isinstance(value, str):
+        value = value.replace("'", "''")
+    
+    # Handle different operators
+    if operator == 'equals':
+        if data_type == 'number':
+            return f"{actual_field} = {value}" if value else f"{actual_field} = 0"
+        else:
+            return f"{actual_field} = '{value}'"
+    elif operator == 'does not equal':
+        if data_type == 'number':
+            return f"{actual_field} != {value}" if value else f"{actual_field} != 0"
+        else:
+            return f"{actual_field} != '{value}'"
+    elif operator == 'contains':
+        return f"{actual_field} LIKE '%{value}%'"
+    elif operator == 'does not contain':
+        return f"{actual_field} NOT LIKE '%{value}%'"
+    elif operator == 'starts with':
+        return f"{actual_field} LIKE '{value}%'"
+    elif operator == 'ends with':
+        return f"{actual_field} LIKE '%{value}'"
+    elif operator == 'is greater than':
+        return f"{actual_field} > {value}" if value else f"{actual_field} > 0"
+    elif operator == 'is less than':
+        return f"{actual_field} < {value}" if value else f"{actual_field} < 0"
+    elif operator == 'is greater than or equal to':
+        return f"{actual_field} >= {value}" if value else f"{actual_field} >= 0"
+    elif operator == 'is less than or equal to':
+        return f"{actual_field} <= {value}" if value else f"{actual_field} <= 0"
+    elif operator == 'is between':
+        value2 = condition.get('value2', value)
+        return f"{actual_field} BETWEEN {value} AND {value2}"
+    elif operator == 'exists':
+        return f"{actual_field} IS NOT NULL AND {actual_field} != ''"
+    elif operator == 'does not exist':
+        return f"({actual_field} IS NULL OR {actual_field} = '')"
+    else:
+        # Default to equals
+        if data_type == 'number':
+            return f"{actual_field} = {value}" if value else f"{actual_field} = 0"
+        else:
+            return f"{actual_field} = '{value}'"
+
+def render_query_builder(segment_definition):
+    """Render the React Awesome Query Builder component (placeholder)"""
+    st.info("Advanced query builder interface coming soon...")
+    
+    # For now, show the SQL query
+    if segment_definition.get('containers'):
+        sql_query = build_sql_from_segment(segment_definition)
+        st.code(sql_query, language='sql')
+
+def convert_to_query_builder_format(segment_definition):
+    """Convert segment definition to React Awesome Query Builder format"""
+    
+    if not segment_definition.get('containers'):
+        return {"id": "root", "type": "group"}
+    
+    # For simplicity, convert the first container
+    container = segment_definition['containers'][0] if segment_definition['containers'] else {}
+    
+    group = {
+        "id": "root",
+        "type": "group",
+        "properties": {
+            "conjunction": container.get('logic', 'AND').upper(),
+            "not": not container.get('include', True)
+        },
+        "children": []
+    }
+    
+    # Convert conditions
+    for idx, condition in enumerate(container.get('conditions', [])):
+        rule = {
+            "id": f"rule_{idx}",
+            "type": "rule",
+            "properties": {
+                "field": condition.get('field', ''),
+                "operator": convert_operator(condition.get('operator', 'equals')),
+                "value": [condition.get('value', '')]
+            }
+        }
+        group['children'].append(rule)
+    
+    return group
+
+def convert_operator(operator):
+    """Convert operator to query builder format"""
+    operator_map = {
+        'equals': 'equal',
+        'does not equal': 'not_equal',
+        'contains': 'like',
+        'does not contain': 'not_like',
+        'is greater than': 'greater',
+        'is less than': 'less',
+        'is greater than or equal to': 'greater_or_equal',
+        'is less than or equal to': 'less_or_equal',
+        'is between': 'between',
+        'exists': 'is_not_null',
+        'does not exist': 'is_null'
+    }
+    return operator_map.get(operator, 'equal')

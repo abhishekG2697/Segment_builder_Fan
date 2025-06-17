@@ -1,0 +1,644 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+from src.database.queries import execute_segment_query, get_db_connection
+from src.utils.query_builder import build_sql_from_segment
+
+def render_preview():
+    """Render the preview panel showing segment results"""
+    
+    st.markdown("### 📊 Segment Preview")
+    
+    # Preview controls
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+    
+    with col1:
+        # Date range input - optional
+        use_date_filter = st.checkbox("Apply date filter", value=False, key="use_date_filter")
+        if use_date_filter:
+            date_range = st.date_input(
+                "Date Range",
+                value=(datetime.now() - timedelta(days=30), datetime.now()),
+                key="preview_date_range"
+            )
+        else:
+            date_range = None
+            st.session_state.preview_date_range = None
+    
+    with col2:
+        # Sample size options
+        sample_options = [10, 50, 100, 500, 1000, 5000, 10000, "All"]
+        sample_size = st.selectbox(
+            "Records to Show",
+            options=sample_options,
+            index=2,  # Default to 100
+            key="preview_sample_size"
+        )
+        st.session_state.preview_limit = sample_size if sample_size != "All" else None
+    
+    with col3:
+        # View mode
+        view_mode = st.selectbox(
+            "View Mode",
+            ["Sample Data", "Full Data"],
+            key="preview_view_mode"
+        )
+    
+    with col4:
+        if st.button("🔄 Refresh Preview", key="refresh_preview", type="primary"):
+            # Force regeneration by clearing preview data
+            st.session_state.preview_data = None
+            generate_preview()
+    
+    # Show current segment definition
+    with st.expander("Current Segment Definition", expanded=False):
+        if st.session_state.segment_definition.get('containers'):
+            st.json(st.session_state.segment_definition)
+        else:
+            st.info("No segment defined yet. Go to Segment Builder to create a segment.")
+    
+    # Check if we have a segment defined
+    if not st.session_state.segment_definition.get('containers'):
+        st.info("Please define a segment in the Segment Builder tab first, or click 'Refresh Preview' to see all data.")
+        # Automatically show sample data
+        if st.session_state.preview_data is None:
+            show_sample_data()
+        else:
+            render_preview_results()
+    else:
+        # Generate preview if not exists
+        if st.session_state.preview_data is None:
+            with st.spinner("Generating preview..."):
+                generate_preview()
+        
+        # Preview results
+        if st.session_state.preview_data is not None:
+            render_preview_results()
+
+def show_sample_data():
+    """Show sample data when no segment is defined"""
+    try:
+        conn = get_db_connection()
+        
+        # Get sample hits with joins
+        sample_query = """
+        SELECT 
+            h.hit_id,
+            h.timestamp,
+            h.user_id,
+            h.session_id,
+            h.page_title,
+            h.page_type,
+            h.browser_name,
+            h.device_type,
+            h.country,
+            h.traffic_source,
+            h.revenue,
+            h.time_on_page,
+            h.products_viewed,
+            h.cart_additions,
+            u.user_type,
+            s.total_hits,
+            s.total_revenue as session_revenue
+        FROM hits h
+        LEFT JOIN users u ON h.user_id = u.user_id
+        LEFT JOIN sessions s ON h.session_id = s.session_id
+        ORDER BY h.timestamp DESC
+        LIMIT 100
+        """
+        
+        df = pd.read_sql_query(sample_query, conn)
+        conn.close()
+        
+        if not df.empty:
+            # Show metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Hits", f"{len(df):,}")
+            with col2:
+                st.metric("Unique Sessions", f"{df['session_id'].nunique():,}")
+            with col3:
+                st.metric("Unique Visitors", f"{df['user_id'].nunique():,}")
+            with col4:
+                avg_revenue = df['revenue'].mean()
+                st.metric("Avg Revenue", f"${avg_revenue:.2f}")
+            
+            # Show data tabs
+            tab1, tab2, tab3 = st.tabs(["📊 Data Sample", "📈 Charts", "📋 Summary"])
+            
+            with tab1:
+                render_data_table(df)
+            
+            with tab2:
+                render_charts(df)
+            
+            with tab3:
+                render_summary(df)
+                
+    except Exception as e:
+        st.error(f"Error loading sample data: {str(e)}")
+
+def generate_preview():
+    """Generate preview data based on current segment definition"""
+    try:
+        # Always start fresh
+        st.session_state.preview_data = None
+        
+        # Check if segment has containers
+        if not st.session_state.segment_definition.get('containers'):
+            st.info("No segment conditions defined. Showing all data.")
+            # Show all data when no conditions
+            conn = get_db_connection()
+            sql_query = """
+            SELECT h.*, u.user_type, s.total_hits, s.total_revenue as session_revenue
+            FROM hits h
+            LEFT JOIN users u ON h.user_id = u.user_id
+            LEFT JOIN sessions s ON h.session_id = s.session_id
+            ORDER BY h.timestamp DESC
+            """
+            
+            limit = st.session_state.get('preview_limit', 100)
+            if limit:
+                sql_query = f"{sql_query} LIMIT {limit}"
+            
+            df = pd.read_sql_query(sql_query, conn)
+            conn.close()
+            
+            st.session_state.preview_data = df
+            if not df.empty:
+                st.success(f"Showing all data: {len(df):,} records")
+            return
+        
+        # Build SQL query from segment definition
+        sql_query = build_sql_from_segment(st.session_state.segment_definition)
+        
+        # Debug: Show the SQL query
+        with st.expander("SQL Query (Debug)", expanded=False):
+            st.code(sql_query, language='sql')
+        
+        # Add date filter if enabled
+        use_date_filter = st.session_state.get('use_date_filter', False)
+        if use_date_filter and 'preview_date_range' in st.session_state:
+            date_range = st.session_state.preview_date_range
+            if date_range and len(date_range) == 2:
+                date_clause = f" AND h.timestamp BETWEEN '{date_range[0]}' AND '{date_range[1]}'"
+                # Insert date clause before ORDER BY
+                if "ORDER BY" in sql_query:
+                    sql_query = sql_query.replace("ORDER BY", date_clause + " ORDER BY")
+                else:
+                    sql_query = sql_query + date_clause
+        
+        # Add limit based on sample size
+        limit = st.session_state.get('preview_limit', 100)
+        if limit:
+            sql_query = f"{sql_query} LIMIT {limit}"
+        
+        # Execute query
+        conn = get_db_connection()
+        df = pd.read_sql_query(sql_query, conn)
+        conn.close()
+        
+        # Store in session state
+        st.session_state.preview_data = df
+        
+        if df.empty:
+            st.warning("No data matches the current segment definition")
+            
+            # Show sample of actual device types for debugging
+            conn = get_db_connection()
+            debug_query = """
+            SELECT DISTINCT device_type, COUNT(*) as count 
+            FROM hits 
+            GROUP BY device_type 
+            ORDER BY count DESC
+            """
+            debug_df = pd.read_sql_query(debug_query, conn)
+            conn.close()
+            
+            with st.expander("Available Device Types (Debug)", expanded=True):
+                st.dataframe(debug_df)
+                st.info("Check if your segment value matches the actual values in the database")
+        else:
+            st.success(f"Preview generated: {len(df):,} records found")
+        
+    except Exception as e:
+        st.error(f"Error generating preview: {str(e)}")
+        # Show SQL for debugging
+        with st.expander("SQL Query Debug", expanded=True):
+            try:
+                sql_query = build_sql_from_segment(st.session_state.segment_definition)
+                st.code(sql_query, language='sql')
+                
+                # Show available columns and sample data
+                conn = get_db_connection()
+                
+                # Show columns
+                columns_query = "PRAGMA table_info(hits)"
+                columns_df = pd.read_sql_query(columns_query, conn)
+                st.write("Available columns in hits table:")
+                st.dataframe(columns_df[['name', 'type']])
+                
+                # Show sample data
+                sample_query = "SELECT * FROM hits LIMIT 5"
+                sample_df = pd.read_sql_query(sample_query, conn)
+                st.write("Sample data from hits table:")
+                st.dataframe(sample_df)
+                
+                conn.close()
+            except Exception as debug_error:
+                st.error(f"Debug error: {str(debug_error)}")
+        st.session_state.preview_data = pd.DataFrame()
+        
+        # Build SQL query from segment definition
+        sql_query = build_sql_from_segment(st.session_state.segment_definition)
+        
+        # Add date filter if enabled
+        use_date_filter = st.session_state.get('use_date_filter', False)
+        if use_date_filter and 'preview_date_range' in st.session_state:
+            date_range = st.session_state.preview_date_range
+            if date_range and len(date_range) == 2:
+                date_clause = f" AND h.timestamp BETWEEN '{date_range[0]}' AND '{date_range[1]}'"
+                sql_query = sql_query.replace("ORDER BY", date_clause + " ORDER BY")
+        
+        # Add limit based on sample size
+        limit = st.session_state.get('preview_limit', 100)
+        if limit:
+            sql_query = f"{sql_query} LIMIT {limit}"
+        
+        # Execute query
+        df = execute_segment_query(sql_query, limit=limit if limit else 10000)
+        
+        # Store in session state
+        st.session_state.preview_data = df
+        
+        if df.empty:
+            st.warning("No data matches the current segment definition")
+        else:
+            st.success(f"Preview generated: {len(df):,} records found")
+        
+    except Exception as e:
+        st.error(f"Error generating preview: {str(e)}")
+        # Show SQL for debugging
+        with st.expander("SQL Query Debug", expanded=True):
+            try:
+                sql_query = build_sql_from_segment(st.session_state.segment_definition)
+                st.code(sql_query, language='sql')
+                
+                # Show available columns
+                conn = get_db_connection()
+                columns_query = "PRAGMA table_info(hits)"
+                columns_df = pd.read_sql_query(columns_query, conn)
+                st.write("Available columns in hits table:")
+                st.dataframe(columns_df[['name', 'type']])
+                conn.close()
+            except:
+                pass
+        st.session_state.preview_data = pd.DataFrame()
+
+def render_preview_results():
+    """Render the preview results with visualizations"""
+    df = st.session_state.preview_data
+    
+    if df.empty:
+        st.warning("No data matches the current segment definition")
+        
+        # Show debug information
+        with st.expander("Debug: Check Available Values", expanded=True):
+            conn = get_db_connection()
+            
+            # Check device types
+            device_query = "SELECT DISTINCT device_type, COUNT(*) as count FROM hits GROUP BY device_type ORDER BY count DESC"
+            device_df = pd.read_sql_query(device_query, conn)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write("**Device Types in Database:**")
+                st.dataframe(device_df)
+            
+            # Check other common fields
+            with col2:
+                browser_query = "SELECT DISTINCT browser_name, COUNT(*) as count FROM hits GROUP BY browser_name ORDER BY count DESC LIMIT 10"
+                browser_df = pd.read_sql_query(browser_query, conn)
+                st.write("**Browser Names in Database:**")
+                st.dataframe(browser_df)
+            
+            conn.close()
+            
+            st.info("💡 Tip: Make sure your segment values exactly match the values in the database (case-sensitive)")
+        return
+    
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Hits", f"{len(df):,}")
+    
+    with col2:
+        unique_sessions = df['session_id'].nunique() if 'session_id' in df.columns else 0
+        st.metric("Unique Sessions", f"{unique_sessions:,}")
+    
+    with col3:
+        unique_visitors = df['user_id'].nunique() if 'user_id' in df.columns else 0
+        st.metric("Unique Visitors", f"{unique_visitors:,}")
+    
+    with col4:
+        total_revenue = df['revenue'].sum() if 'revenue' in df.columns else 0
+        st.metric("Total Revenue", f"${total_revenue:,.2f}")
+    
+    # Tabs for different views
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Trends", "📊 Distribution", "🗂️ Data Table", "🔍 Analysis", "📥 Export"])
+    
+    with tab1:
+        render_trends_view(df)
+    
+    with tab2:
+        render_distribution_view(df)
+    
+    with tab3:
+        render_data_table(df)
+    
+    with tab4:
+        render_analysis_view(df)
+    
+    with tab5:
+        render_export_options(df)
+
+def render_data_table(df):
+    """Render data table with column selection"""
+    st.markdown("#### Data Table")
+    
+    # Apply custom styling for multiselect
+    st.markdown("""
+    <style>
+    /* Light green background for selected columns */
+    [data-baseweb="tag"] {
+        background-color: #E8F5E9 !important;
+        color: #2E7D32 !important;
+        border: 1px solid #81C784 !important;
+    }
+    
+    [data-baseweb="tag"]:hover {
+        background-color: #C8E6C9 !important;
+    }
+    
+    /* Remove red X button styling */
+    [data-baseweb="tag"] [role="presentation"] {
+        color: #2E7D32 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # View options
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        # Column selector
+        available_columns = df.columns.tolist()
+        default_columns = ['timestamp', 'user_id', 'session_id', 'page_title', 'browser_name', 
+                          'device_type', 'revenue', 'time_on_page', 'country']
+        default_columns = [col for col in default_columns if col in available_columns]
+        
+        selected_columns = st.multiselect(
+            "Select columns to display",
+            options=available_columns,
+            default=default_columns[:10] if len(default_columns) > 10 else default_columns
+        )
+    
+    with col2:
+        # Rows to display
+        rows_to_show = st.number_input(
+            "Rows to display",
+            min_value=10,
+            max_value=min(10000, len(df)),
+            value=min(100, len(df)),
+            step=10
+        )
+    
+    # Display table
+    if selected_columns:
+        display_df = df[selected_columns].head(rows_to_show)
+        
+        # Format timestamp if present
+        if 'timestamp' in display_df.columns:
+            display_df['timestamp'] = pd.to_datetime(display_df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            height=400
+        )
+        
+        # Show total records info
+        st.info(f"Showing {min(rows_to_show, len(df))} of {len(df):,} total records")
+
+def render_charts(df):
+    """Render distribution charts"""
+    if df.empty:
+        st.info("No data available for charts")
+        return
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Browser distribution
+        if 'browser_name' in df.columns:
+            browser_dist = df['browser_name'].value_counts().head(5)
+            if not browser_dist.empty:
+                fig = px.pie(
+                    values=browser_dist.values,
+                    names=browser_dist.index,
+                    title="Browser Distribution",
+                    color_discrete_sequence=px.colors.sequential.Blues
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No browser data available")
+    
+    with col2:
+        # Device type distribution
+        if 'device_type' in df.columns:
+            device_dist = df['device_type'].value_counts()
+            if not device_dist.empty:
+                fig = px.bar(
+                    x=device_dist.index,
+                    y=device_dist.values,
+                    title="Device Type Distribution",
+                    color_discrete_sequence=['#1473E6']
+                )
+                fig.update_layout(showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No device type data available")
+
+def render_summary(df):
+    """Render summary statistics"""
+    st.markdown("#### Summary Statistics")
+    
+    # Numeric columns summary
+    numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns
+    if len(numeric_columns) > 0:
+        st.write("**Numeric Fields:**")
+        st.dataframe(df[numeric_columns].describe())
+    
+    # Categorical columns summary
+    categorical_columns = df.select_dtypes(include=['object']).columns
+    if len(categorical_columns) > 0:
+        st.write("**Categorical Fields:**")
+        cat_summary = {}
+        for col in categorical_columns[:5]:  # Limit to first 5
+            cat_summary[col] = {
+                'Unique Values': df[col].nunique(),
+                'Most Common': df[col].mode()[0] if not df[col].mode().empty else 'N/A',
+                'Frequency': df[col].value_counts().iloc[0] if not df[col].value_counts().empty else 0
+            }
+        st.dataframe(pd.DataFrame(cat_summary).T)
+
+def render_trends_view(df):
+    """Render time-based trends"""
+    if 'timestamp' in df.columns:
+        # Convert timestamp to datetime
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df['date'] = df['timestamp'].dt.date
+        
+        # Group by day
+        daily_stats = df.groupby('date').agg({
+            'hit_id': 'count',
+            'user_id': 'nunique',
+            'revenue': 'sum' if 'revenue' in df.columns else lambda x: 0
+        }).reset_index()
+        daily_stats.columns = ['Date', 'Hits', 'Unique Visitors', 'Revenue']
+        
+        # Line chart
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=daily_stats['Date'],
+            y=daily_stats['Hits'],
+            mode='lines+markers',
+            name='Hits',
+            line=dict(color='#1473E6', width=2)
+        ))
+        
+        fig.add_trace(go.Scatter(
+            x=daily_stats['Date'],
+            y=daily_stats['Unique Visitors'],
+            mode='lines+markers',
+            name='Unique Visitors',
+            line=dict(color='#0D66D0', width=2),
+            yaxis='y2'
+        ))
+        
+        fig.update_layout(
+            title="Segment Trends Over Time",
+            xaxis_title="Date",
+            yaxis_title="Hits",
+            yaxis2=dict(
+                title="Unique Visitors",
+                overlaying='y',
+                side='right'
+            ),
+            hovermode='x unified',
+            height=400,
+            plot_bgcolor='white',
+            paper_bgcolor='white'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Timestamp data not available for trends analysis")
+
+def render_distribution_view(df):
+    """Render distribution charts"""
+    # Page type distribution
+    if 'page_type' in df.columns:
+        page_dist = df['page_type'].value_counts()
+        fig = px.bar(
+            x=page_dist.values,
+            y=page_dist.index,
+            orientation='h',
+            title="Page Type Distribution",
+            labels={'x': 'Count', 'y': 'Page Type'},
+            color_discrete_sequence=['#1473E6']
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Traffic source distribution
+    if 'traffic_source' in df.columns:
+        traffic_dist = df['traffic_source'].value_counts()
+        fig = px.pie(
+            values=traffic_dist.values,
+            names=traffic_dist.index,
+            title="Traffic Source Distribution",
+            hole=0.4
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+def render_analysis_view(df):
+    """Render detailed analysis of the segment"""
+    st.markdown("#### Segment Analysis")
+    
+    # Key insights
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Top Pages**")
+        if 'page_title' in df.columns:
+            top_pages = df['page_title'].value_counts().head(10)
+            for page, count in top_pages.items():
+                st.markdown(f"- {page}: {count:,} ({count/len(df)*100:.1f}%)")
+    
+    with col2:
+        st.markdown("**Top Traffic Sources**")
+        if 'traffic_source' in df.columns:
+            top_sources = df['traffic_source'].value_counts().head(10)
+            for source, count in top_sources.items():
+                st.markdown(f"- {source}: {count:,} ({count/len(df)*100:.1f}%)")
+    
+    # User behavior analysis
+    if all(col in df.columns for col in ['user_id', 'revenue']):
+        st.markdown("**User Behavior Metrics**")
+        user_metrics = df.groupby('user_id').agg({
+            'hit_id': 'count',
+            'revenue': 'sum',
+            'session_id': 'nunique'
+        }).describe()
+        st.dataframe(user_metrics)
+
+def render_export_options(df):
+    """Render export options"""
+    st.markdown("#### Export Data")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # CSV export
+        csv = df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download as CSV",
+            data=csv,
+            file_name=f"segment_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv"
+        )
+    
+    with col2:
+        # JSON export
+        json_str = df.to_json(orient='records', indent=2)
+        st.download_button(
+            label="📥 Download as JSON",
+            data=json_str,
+            file_name=f"segment_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json"
+        )
+    
+    # Export segment definition
+    st.markdown("**Segment Definition**")
+    segment_json = pd.json_normalize(st.session_state.segment_definition).to_json(indent=2)
+    st.download_button(
+        label="📥 Download Segment Definition",
+        data=segment_json,
+        file_name=f"segment_definition_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        mime="application/json"
+    )
