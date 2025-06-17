@@ -1,10 +1,16 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import json
+from src.database.queries import load_saved_segments
 
 def render_integrated_builder(config, segment_definition):
     """Render an integrated drag and drop builder with sidebar and segment area"""
-    
+    if 'db_segments' not in st.session_state:
+        try:
+            st.session_state.db_segments = load_saved_segments()
+        except Exception:
+            st.session_state.db_segments = []
+
     # Convert config to JSON for JavaScript
     dimensions = []
     for cat in config.get('dimensions', []):
@@ -29,6 +35,9 @@ def render_integrated_builder(config, segment_definition):
             })
     
     segments = config.get('segments', [])
+
+    if st.session_state.get('db_segments'):
+        segments.extend(st.session_state.db_segments)
     
     # Current segment definition
     current_segment = json.dumps(segment_definition)
