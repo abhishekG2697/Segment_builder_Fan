@@ -4,7 +4,7 @@ import uuid
 from typing import Dict, List, Any, Optional
 
 
-def render_react_segment_builder(config: Dict, current_segment: Dict = None) -> str:
+def render_enhanced_react_segment_builder(config: Dict, current_segment: Dict = None) -> str:
     """
     Render the enhanced React segment builder with nested container support
     """
@@ -608,6 +608,7 @@ def render_react_segment_builder(config: Dict, current_segment: Dict = None) -> 
                 const [segment, setSegment] = useState({json.dumps(current_segment)});
                 const [draggedItem, setDraggedItem] = useState(null);
                 const [collapsedContainers, setCollapsedContainers] = useState(new Set());
+                const [hoveredContainer, setHoveredContainer] = useState(null);
 
                 const dropZoneRef = useRef(null);
 
@@ -1112,10 +1113,20 @@ def render_react_segment_builder(config: Dict, current_segment: Dict = None) -> 
     # Use Streamlit's HTML component to render
     st.components.v1.html(html_content, height=600, scrolling=False)
 
-    return "react_segment_builder_rendered"
+    return "enhanced_react_segment_builder_rendered"
 
 
-# Utility functions for nested container support
+def handle_segment_update_messages():
+    """
+    Handle messages from the React component
+    """
+    # This would be called in your main Streamlit app to handle updates
+    # You can use st.session_state to store the updated segment data
+    pass
+
+
+# Additional utility functions for the enhanced builder
+
 def flatten_containers(containers, level=0):
     """
     Flatten nested containers for analysis and export

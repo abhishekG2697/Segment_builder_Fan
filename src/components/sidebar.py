@@ -1,498 +1,915 @@
 import streamlit as st
+import streamlit.components.v1 as components
+import json
 import uuid
+from typing import Dict, List, Any
 
-def render_sidebar(config):
-    """Render the sidebar with enhanced UI and better functionality"""
 
+def render_sidebar(config: Dict) -> None:
+    """
+    Render the sidebar with draggable components - COMPATIBILITY FIXED
+    """
+
+    # Apply sidebar styling
     st.markdown("""
     <style>
-    /* Force light theme everywhere */
-    :root {
-        --primary-color: #1473E6 !important;
-        --text-dark: #2C2C2C !important;
-        --text-light: #6E6E6E !important;
-        --bg-white: #FFFFFF !important;
-        --bg-light: #F5F5F5 !important;
-        --border-color: #E1E1E1 !important;
+    /* Sidebar Styling */
+    .sidebar-section {
+        margin-bottom: 24px;
     }
-    
-    /* Compact sidebar styling */
-    section[data-testid="stSidebar"] {
-        width: 300px !important;
-        background: #FFFFFF !important;
-        border-right: 1px solid #E8E8E8;
+
+    .sidebar-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #2c2c2c;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #e1e1e1;
     }
-    
-    section[data-testid="stSidebar"] > div {
-        padding: 12px;
-        background-color: #FFFFFF !important;
+
+    .sidebar-count {
+        background: #6e6e6e;
+        color: white;
+        border-radius: 12px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 400;
+        min-width: 20px;
+        text-align: center;
     }
-    
-    /* Remove default spacing */
-    section[data-testid="stSidebar"] .block-container {
-        padding: 0;
+
+    .sidebar-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        margin-bottom: 2px;
+        border-radius: 4px;
+        cursor: move;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+        background: white;
+        user-select: none;
     }
-    
-    /* Fix ALL sidebar buttons - WHITE BACKGROUNDS ONLY */
-    section[data-testid="stSidebar"] button,
-    section[data-testid="stSidebar"] .stButton > button {
-        background-color: #FFFFFF !important;
-        color: #2C2C2C !important;
-        border: 1px solid #D3D3D3 !important;
-        cursor: pointer !important;
+
+    .sidebar-item:hover {
+        background: #f8f9fa;
+        border-color: #e1e1e1;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    
-    section[data-testid="stSidebar"] button:hover,
-    section[data-testid="stSidebar"] .stButton > button:hover {
-        background-color: #F0F8FF !important;
-        border-color: #1473E6 !important;
-        color: #1473E6 !important;
+
+    .sidebar-item.dragging {
+        opacity: 0.5;
+        transform: rotate(3deg);
     }
-    
-    /* Fix "+" buttons specifically - WHITE BACKGROUND, DARK SYMBOL */
-    section[data-testid="stSidebar"] button[key*="add"],
-    section[data-testid="stSidebar"] button[title*="Add"],
-    section[data-testid="stSidebar"] button:has(➕) {
-        background-color: #FFFFFF !important;
-        color: #2C2C2C !important;
-        border: 1px solid #D3D3D3 !important;
-        font-weight: 600 !important;
-        font-size: 16px !important;
-        padding: 4px 8px !important;
-        min-width: 32px !important;
-        height: 32px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        cursor: pointer !important;
+
+    .sidebar-item-content {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        gap: 8px;
     }
-    
-    section[data-testid="stSidebar"] button[key*="add"]:hover {
-        background-color: #E8F5FF !important;
-        border-color: #1473E6 !important;
-        color: #1473E6 !important;
+
+    .sidebar-item-icon {
+        font-size: 16px;
+        width: 20px;
+        text-align: center;
+    }
+
+    .sidebar-item-name {
+        font-size: 14px;
+        color: #2c2c2c;
+        font-weight: 400;
+    }
+
+    .sidebar-add-btn {
+        width: 24px;
+        height: 24px;
+        border: 1px solid #d3d3d3;
+        background: white;
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6e6e6e;
+        transition: all 0.2s ease;
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .sidebar-add-btn:hover {
+        background: #1473e6;
+        color: white;
+        border-color: #1473e6;
         transform: scale(1.1);
     }
-    
-    /* Search box styling */
-    .sidebar-search {
-        position: sticky;
-        top: 0;
-        background: white;
-        z-index: 100;
-        padding-bottom: 12px;
-        border-bottom: 1px solid #E8E8E8;
-        margin-bottom: 12px;
-    }
-    
-    /* Fix search input background */
-    section[data-testid="stSidebar"] input,
-    section[data-testid="stSidebar"] .stTextInput > div > div > input {
-        background-color: #FFFFFF !important;
-        color: #2C2C2C !important;
-        border: 1px solid #D3D3D3 !important;
-        cursor: text !important;
-    }
-    
-    /* Component sections */
-    .component-section {
-        margin-bottom: 8px;
-    }
-    
-    .section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 12px;
-        background: #F8F8F8;
+
+    /* Collapsible sections */
+    .sidebar-collapsible {
         cursor: pointer;
         user-select: none;
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-        color: #323232;
-        letter-spacing: 0.5px;
-        margin: 0 -12px;
     }
-    
-    .section-header:hover {
-        background: #F0F0F0;
+
+    .sidebar-content {
+        max-height: 400px;
+        overflow-y: auto;
+        transition: max-height 0.3s ease;
     }
-    
-    .section-count {
-        color: #E34850;
-        font-weight: 700;
-        font-size: 14px;
-    }
-    
-    /* Component items - ultra compact */
-    .component-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 6px 8px;
-        margin: 2px 0;
-        background: #FFFFFF;
-        border: 1px solid #E8E8E8;
-        border-radius: 3px;
-        cursor: grab;
-        transition: all 0.15s ease;
-        font-size: 13px;
-        min-height: 32px;
-    }
-    
-    .component-item:hover {
-        background: #F0F8FF;
-        border-color: #1473E6;
-        transform: translateX(2px);
-        box-shadow: 0 1px 3px rgba(20, 115, 230, 0.15);
-    }
-    
-    .component-item:active {
-        cursor: grabbing;
-    }
-    
-    .component-name {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex: 1;
+
+    .sidebar-content.collapsed {
+        max-height: 0;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: #2C2C2C !important;
-    }
-    
-    .component-icon {
-        font-size: 14px;
-        flex-shrink: 0;
-    }
-    
-    /* Segment items - special styling */
-    .segment-item {
-        padding: 8px;
-        background: #FAFAFA;
-        border-left: 3px solid #6B46C1;
-    }
-    
-    .segment-item:hover {
-        background: #F5F0FF;
-        border-left-color: #553C9A;
-    }
-    
-    .segment-description {
-        font-size: 11px;
-        color: #6E6E6E;
-        margin-top: 2px;
-        line-height: 1.3;
-    }
-    
-    /* Remove Streamlit expander styling */
-    .streamlit-expanderHeader {
-        display: none !important;
-    }
-    
-    /* Custom expander content */
-    .streamlit-expanderContent {
-        padding: 0 !important;
-        border: none !important;
-        margin-top: 8px !important;
-    }
-    
-    /* Filter dropdown */
-    .filter-select {
-        font-size: 12px;
-        padding: 4px 8px;
-        border: 1px solid #E8E8E8;
-        border-radius: 3px;
-        margin-bottom: 8px;
-    }
-    
-    /* Scrollbar styling */
-    section[data-testid="stSidebar"] ::-webkit-scrollbar {
-        width: 6px;
-    }
-    
-    section[data-testid="stSidebar"] ::-webkit-scrollbar-track {
-        background: #F5F5F5;
-    }
-    
-    section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
-        background: #D3D3D3;
-        border-radius: 3px;
-    }
-    
-    /* Fix selectbox backgrounds in sidebar */
-    section[data-testid="stSidebar"] .stSelectbox > div > div {
-        background-color: #FFFFFF !important;
-    }
-    
-    section[data-testid="stSidebar"] .stSelectbox > div > div > div {
-        background-color: #FFFFFF !important;
-        color: #2C2C2C !important;
-    }
-    
-    /* Ensure all text in sidebar is dark */
-    section[data-testid="stSidebar"] p,
-    section[data-testid="stSidebar"] span,
-    section[data-testid="stSidebar"] div,
-    section[data-testid="stSidebar"] label {
-        color: #2C2C2C !important;
-    }
-    
-    /* Override any remaining dark backgrounds */
-    section[data-testid="stSidebar"] [style*="background-color: rgb(38, 39, 48)"],
-    section[data-testid="stSidebar"] [style*="background-color: rgb(49, 51, 63)"],
-    section[data-testid="stSidebar"] [style*="background: rgb(38, 39, 48)"],
-    section[data-testid="stSidebar"] [style*="background: rgb(49, 51, 63)"] {
-        background-color: #FFFFFF !important;
     }
     </style>
     """, unsafe_allow_html=True)
-    
-    # Search functionality - WORKING
-    search_query = st.text_input(
-        "🔍", 
-        placeholder="Search components...",
-        key="sidebar_search_input",
-        label_visibility="collapsed"
-    ).lower()  # Convert to lowercase for case-insensitive search
-    
-    # Filter dropdown
-    filter_option = st.selectbox(
-        "Filter",
-        ["All Components", "Dimensions", "Metrics", "Segments"],
-        key="sidebar_filter",
-        label_visibility="collapsed"
+
+    # Get data from config
+    dimensions = config.get('dimensions', [])
+    metrics = config.get('metrics', [])
+    segments = config.get('segments', [])
+
+    # Search box at top
+    render_search_box()
+
+    # Filter items based on search
+    search_term = st.session_state.get('sidebar_search', '')
+    if search_term:
+        dimensions = filter_items_by_search(dimensions, search_term)
+        metrics = filter_items_by_search(metrics, search_term)
+        segments = filter_items_by_search(segments, search_term)
+
+    # Render sections
+    render_dimensions_section_fixed(dimensions)
+    render_metrics_section_fixed(metrics)
+
+    if segments:
+        render_segments_section_fixed(segments)
+
+
+def render_search_box():
+    """Render search box for filtering sidebar items - FIXED VERSION"""
+
+    search_term = st.text_input(
+        "Search components...",
+        key="sidebar_search",
+        placeholder="Type to search dimensions, metrics, segments..."
     )
-    
-    # Pre-built segment definitions with correct field mappings
-    segment_definitions = {
-        'High Value Customers': {
-            'name': 'High Value Customers',
-            'description': 'Visitors with revenue > $500',
-            'container_type': 'visitor',
-            'containers': [{
-                'id': 'container_high_value_1',
-                'type': 'visitor',
-                'include': True,
-                'conditions': [{
-                    'id': 'cond_revenue_1',
-                    'field': 'revenue',
-                    'name': 'Revenue',
-                    'type': 'metric',
-                    'category': 'Commerce',
-                    'operator': 'is greater than',
-                    'value': 500,
-                    'data_type': 'number'
-                }],
-                'logic': 'and'
-            }],
+
+    if search_term:
+        st.session_state.sidebar_search = search_term.lower()
+    else:
+        st.session_state.sidebar_search = ""
+
+
+def render_dimensions_section_fixed(dimensions: List[Dict]):
+    """Render the dimensions section - COMPATIBILITY FIXED"""
+
+    if not dimensions:
+        return
+
+    # Section header - Fixed with expander
+    with st.expander(f"📊 DIMENSIONS ({len(dimensions)})", expanded=True):
+        # Group dimensions by category
+        categories = {}
+        for dim in dimensions:
+            category = dim.get('category', 'Other')
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(dim)
+
+        # Render each category
+        for category, items in categories.items():
+            if len(categories) > 1:
+                st.markdown(f"**{category}**")
+
+            for item in items:
+                render_draggable_item_fixed(item, '📊', 'dimension')
+
+
+def render_metrics_section_fixed(metrics: List[Dict]):
+    """Render the metrics section - COMPATIBILITY FIXED"""
+
+    if not metrics:
+        return
+
+    # Section header - Fixed with expander
+    with st.expander(f"📈 METRICS ({len(metrics)})", expanded=True):
+        # Group metrics by category
+        categories = {}
+        for metric in metrics:
+            category = metric.get('category', 'Other')
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(metric)
+
+        # Render each category
+        for category, items in categories.items():
+            if len(categories) > 1:
+                st.markdown(f"**{category}**")
+
+            for item in items:
+                render_draggable_item_fixed(item, '📈', 'metric')
+
+
+def render_segments_section_fixed(segments: List[Dict]):
+    """Render the segments section - COMPATIBILITY FIXED"""
+
+    if not segments:
+        return
+
+    # Section header - Fixed with expander
+    with st.expander(f"🎯 SEGMENTS ({len(segments)})", expanded=False):
+        for segment in segments:
+            render_draggable_segment_fixed(segment)
+
+
+def render_draggable_item_fixed(item: Dict, icon: str, item_type: str):
+    """Render a draggable dimension or metric item - COMPATIBILITY FIXED"""
+
+    item_id = f"{item_type}_{item.get('field', item.get('id', uuid.uuid4().hex[:8]))}"
+
+    # Create columns for layout
+    col1, col2 = st.columns([4, 1])
+
+    with col1:
+        # Item display
+        st.markdown(f"""
+        <div class="sidebar-item-content">
+            <span class="sidebar-item-icon">{icon}</span>
+            <span class="sidebar-item-name">{item.get('name', 'Unknown')}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        # Add button - FIXED: No label_visibility
+        if st.button("➕", key=f"add_{item_id}", help=f"Add {item.get('name', 'item')} to segment"):
+            add_to_segment_fixed(item, item_type)
+            st.success(f"✅ Added {item.get('name')} to segment")
+            st.rerun()
+
+
+def render_draggable_segment_fixed(segment: Dict):
+    """Render a draggable segment item - COMPATIBILITY FIXED"""
+
+    segment_id = f"segment_{segment.get('id', uuid.uuid4().hex[:8])}"
+
+    # Create columns for layout
+    col1, col2 = st.columns([4, 1])
+
+    with col1:
+        # Segment display
+        st.markdown(f"""
+        <div class="sidebar-item-content">
+            <span class="sidebar-item-icon">🎯</span>
+            <div>
+                <div class="sidebar-item-name">{segment.get('name', 'Unknown')}</div>
+                {f'<div style="font-size: 12px; color: #6e6e6e;">{segment.get("description", "")[:50]}...</div>' if segment.get('description') else ''}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        # Add button - FIXED: No label_visibility
+        if st.button("➕", key=f"add_{segment_id}", help="Load segment"):
+            add_segment_to_builder_fixed(segment)
+            st.success(f"✅ Loaded segment: {segment.get('name')}")
+            st.rerun()
+
+
+def add_to_segment_fixed(item: Dict, item_type: str, category: str = ''):
+    """Add a dimension or metric to the current segment - COMPATIBILITY FIXED"""
+
+    # Import the function from segment_builder
+    from src.components.segment_builder import add_item_to_segment
+
+    try:
+        add_item_to_segment(item, item_type)
+    except Exception as e:
+        st.error(f"Error adding item: {str(e)}")
+        # Fallback: manual addition
+        add_to_segment_fallback(item, item_type, category)
+
+
+def add_to_segment_fallback(item: Dict, item_type: str, category: str = ''):
+    """Fallback method to add item to segment"""
+
+    new_condition = {
+        'id': f"{item_type}_{item.get('field', uuid.uuid4().hex[:8])}_{uuid.uuid4().hex[:8]}",
+        'field': item.get('field', ''),
+        'name': item.get('name', 'Unknown'),
+        'type': item_type,
+        'category': category,
+        'operator': 'equals',
+        'value': '',
+        'data_type': item.get('dataType', 'string')
+    }
+
+    # Add to current segment
+    if not st.session_state.segment_definition.get('containers'):
+        # Create first container
+        st.session_state.segment_definition['containers'] = [{
+            'id': f'container_{uuid.uuid4().hex[:8]}',
+            'type': 'hit',
+            'include': True,
+            'conditions': [new_condition],
+            'children': [],
             'logic': 'and'
-        },
-        'Mobile Users': {
-            'name': 'Mobile Users',
-            'description': 'All mobile device traffic',
-            'container_type': 'hit',
-            'containers': [{
-                'id': 'container_mobile_1',
-                'type': 'hit',
-                'include': True,
-                'conditions': [{
-                    'id': 'cond_device_1',
-                    'field': 'device_type',
-                    'name': 'Device Type',
-                    'type': 'dimension',
-                    'category': 'Browser',
-                    'operator': 'equals',
-                    'value': 'Mobile',
-                    'data_type': 'string'
-                }],
-                'logic': 'and'
-            }],
-            'logic': 'and'
-        },
-        'Engaged Sessions': {
-            'name': 'Engaged Sessions',
-            'description': 'Sessions with 5+ page views',
-            'container_type': 'visit',
-            'containers': [{
-                'id': 'container_engaged_1',
-                'type': 'visit',
-                'include': True,
-                'conditions': [{
-                    'id': 'cond_pageviews_1',
-                    'field': 'page_views',  # Fixed field mapping
-                    'name': 'Page Views',
-                    'type': 'metric',
-                    'category': 'Engagement',
-                    'operator': 'is greater than or equal to',
-                    'value': 5,
-                    'data_type': 'number'
-                }],
-                'logic': 'and'
-            }],
-            'logic': 'and'
+        }]
+    else:
+        # Add to the first container
+        if st.session_state.segment_definition['containers']:
+            st.session_state.segment_definition['containers'][0]['conditions'].append(new_condition)
+
+
+def add_segment_to_builder_fixed(segment: Dict):
+    """Add a pre-built segment to the builder - COMPATIBILITY FIXED"""
+
+    # Import the function from segment_builder
+    from src.components.segment_builder import add_segment_to_builder
+
+    try:
+        add_segment_to_builder(segment)
+    except Exception as e:
+        st.error(f"Error loading segment: {str(e)}")
+        # Fallback: manual loading
+        add_segment_to_builder_fallback(segment)
+
+
+def add_segment_to_builder_fallback(segment: Dict):
+    """Fallback method to add segment to builder"""
+
+    # Check if segment has a complete definition
+    if 'definition' in segment and segment['definition']:
+        # Load the complete segment definition
+        st.session_state.segment_definition = segment['definition'].copy()
+    elif 'containers' in segment:
+        # Use the segment structure directly
+        st.session_state.segment_definition = {
+            'name': segment.get('name', 'Imported Segment'),
+            'description': segment.get('description', ''),
+            'container_type': segment.get('container_type', 'hit'),
+            'logic': segment.get('logic', 'and'),
+            'containers': segment.get('containers', [])
+        }
+    else:
+        st.warning(f"Segment {segment.get('name', 'Unknown')} has no complete definition.")
+
+
+def filter_items_by_search(items: List[Dict], search_term: str) -> List[Dict]:
+    """Filter items based on search term"""
+
+    if not search_term:
+        return items
+
+    filtered_items = []
+    for item in items:
+        # Search in name, field, and category
+        searchable_text = f"{item.get('name', '')} {item.get('field', '')} {item.get('category', '')}".lower()
+        if search_term in searchable_text:
+            filtered_items.append(item)
+
+    return filtered_items
+
+
+# Alternative simple sidebar for maximum compatibility
+def render_simple_sidebar(config: Dict):
+    """
+    Simple sidebar with maximum compatibility - no fancy features
+    """
+
+    st.markdown("## 📋 Components")
+
+    # Search
+    search_term = st.text_input("🔍 Search", placeholder="Type to search...")
+
+    # Get data
+    dimensions = config.get('dimensions', [])
+    metrics = config.get('metrics', [])
+    segments = config.get('segments', [])
+
+    # Filter based on search
+    if search_term:
+        search_lower = search_term.lower()
+        dimensions = [d for d in dimensions if search_lower in d.get('name', '').lower()]
+        metrics = [m for m in metrics if search_lower in m.get('name', '').lower()]
+        segments = [s for s in segments if search_lower in s.get('name', '').lower()]
+
+    # Dimensions
+    if dimensions:
+        st.markdown(f"### 📊 Dimensions ({len(dimensions)})")
+        for dim in dimensions:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"📊 {dim.get('name', 'Unknown')}")
+            with col2:
+                if st.button("➕", key=f"simple_add_dim_{dim.get('field', uuid.uuid4().hex[:8])}", help="Add"):
+                    add_to_segment_fallback(dim, 'dimension')
+                    st.success(f"Added {dim.get('name')}")
+                    st.rerun()
+
+    # Metrics
+    if metrics:
+        st.markdown(f"### 📈 Metrics ({len(metrics)})")
+        for metric in metrics:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"📈 {metric.get('name', 'Unknown')}")
+            with col2:
+                if st.button("➕", key=f"simple_add_metric_{metric.get('field', uuid.uuid4().hex[:8])}", help="Add"):
+                    add_to_segment_fallback(metric, 'metric')
+                    st.success(f"Added {metric.get('name')}")
+                    st.rerun()
+
+    # Segments
+    if segments:
+        st.markdown(f"### 🎯 Segments ({len(segments)})")
+        for segment in segments:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"🎯 {segment.get('name', 'Unknown')}")
+            with col2:
+                if st.button("🔄", key=f"simple_load_seg_{segment.get('id', uuid.uuid4().hex[:8])}", help="Load"):
+                    add_segment_to_builder_fallback(segment)
+                    st.success(f"Loaded {segment.get('name')}")
+                    st.rerun()
+
+
+# Utility function to get item icon
+def get_item_icon(item_type: str) -> str:
+    """Get icon for item type"""
+    icons = {
+        'dimension': '📊',
+        'metric': '📈',
+        'segment': '🎯'
+    }
+    return icons.get(item_type, '📄')
+
+
+# Initialize sidebar search state
+def initialize_sidebar_state():
+    """Initialize sidebar state"""
+    if 'sidebar_search' not in st.session_state:
+        st.session_state.sidebar_search = ""
+
+    # Apply sidebar styling
+    st.markdown("""
+    <style>
+    /* Sidebar Styling */
+    .sidebar-section {
+        margin-bottom: 24px;
+    }
+
+    .sidebar-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #2c2c2c;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #e1e1e1;
+    }
+
+    .sidebar-count {
+        background: #6e6e6e;
+        color: white;
+        border-radius: 12px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 400;
+        min-width: 20px;
+        text-align: center;
+    }
+
+    .sidebar-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        margin-bottom: 2px;
+        border-radius: 4px;
+        cursor: move;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+        background: white;
+        user-select: none;
+    }
+
+    .sidebar-item:hover {
+        background: #f8f9fa;
+        border-color: #e1e1e1;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .sidebar-item.dragging {
+        opacity: 0.5;
+        transform: rotate(3deg);
+    }
+
+    .sidebar-item-content {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        gap: 8px;
+    }
+
+    .sidebar-item-icon {
+        font-size: 16px;
+        width: 20px;
+        text-align: center;
+    }
+
+    .sidebar-item-name {
+        font-size: 14px;
+        color: #2c2c2c;
+        font-weight: 400;
+    }
+
+    .sidebar-add-btn {
+        width: 24px;
+        height: 24px;
+        border: 1px solid #d3d3d3;
+        background: white;
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6e6e6e;
+        transition: all 0.2s ease;
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .sidebar-add-btn:hover {
+        background: #1473e6;
+        color: white;
+        border-color: #1473e6;
+        transform: scale(1.1);
+    }
+
+    /* Collapsible sections */
+    .sidebar-collapsible {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .sidebar-content {
+        max-height: 400px;
+        overflow-y: auto;
+        transition: max-height 0.3s ease;
+    }
+
+    .sidebar-content.collapsed {
+        max-height: 0;
+        overflow: hidden;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Get data from config
+    dimensions = config.get('dimensions', [])
+    metrics = config.get('metrics', [])
+    segments = config.get('segments', [])
+
+    # Render sections
+    render_dimensions_section(dimensions)
+    render_metrics_section(metrics)
+
+    if segments:
+        render_segments_section(segments)
+
+    # Initialize drag-and-drop functionality
+    initialize_drag_drop_functionality()
+
+
+def render_dimensions_section(dimensions: List[Dict]):
+    """Render the dimensions section"""
+
+    # Section header with expand/collapse
+    col1, col2 = st.columns([1, 10])
+    with col1:
+        expanded = st.session_state.get('dimensions_expanded', True)
+        if st.button("▼" if expanded else "▶", key="dimensions_toggle"):
+            st.session_state.dimensions_expanded = not expanded
+            st.rerun()
+
+    with col2:
+        st.markdown(f"""
+        <div class="sidebar-title">
+            📊 Dimensions
+            <span class="sidebar-count">{len(dimensions)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Content
+    if st.session_state.get('dimensions_expanded', True):
+        # Group dimensions by category
+        categories = {}
+        for dim in dimensions:
+            category = dim.get('category', 'Other')
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(dim)
+
+        # Render each category
+        for category, items in categories.items():
+            if len(categories) > 1:
+                st.markdown(f"**{category}**")
+
+            for item in items:
+                render_draggable_item(item, '📊', 'dimension')
+
+
+def render_metrics_section(metrics: List[Dict]):
+    """Render the metrics section"""
+
+    # Section header with expand/collapse
+    col1, col2 = st.columns([1, 10])
+    with col1:
+        expanded = st.session_state.get('metrics_expanded', True)
+        if st.button("▼" if expanded else "▶", key="metrics_toggle"):
+            st.session_state.metrics_expanded = not expanded
+            st.rerun()
+
+    with col2:
+        st.markdown(f"""
+        <div class="sidebar-title">
+            📈 Metrics
+            <span class="sidebar-count">{len(metrics)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Content
+    if st.session_state.get('metrics_expanded', True):
+        # Group metrics by category
+        categories = {}
+        for metric in metrics:
+            category = metric.get('category', 'Other')
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(metric)
+
+        # Render each category
+        for category, items in categories.items():
+            if len(categories) > 1:
+                st.markdown(f"**{category}**")
+
+            for item in items:
+                render_draggable_item(item, '📈', 'metric')
+
+
+def render_segments_section(segments: List[Dict]):
+    """Render the segments section"""
+
+    # Section header with expand/collapse
+    col1, col2 = st.columns([1, 10])
+    with col1:
+        expanded = st.session_state.get('segments_expanded', True)
+        if st.button("▼" if expanded else "▶", key="segments_toggle"):
+            st.session_state.segments_expanded = not expanded
+            st.rerun()
+
+    with col2:
+        st.markdown(f"""
+        <div class="sidebar-title">
+            🎯 Segments
+            <span class="sidebar-count">{len(segments)}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Content
+    if st.session_state.get('segments_expanded', True):
+        for segment in segments:
+            render_draggable_segment(segment)
+
+
+def render_draggable_item(item: Dict, icon: str, item_type: str):
+    """Render a draggable dimension or metric item"""
+
+    item_id = f"{item_type}_{item.get('field', item.get('id', uuid.uuid4().hex[:8]))}"
+
+    # Create the item HTML with drag attributes
+    item_html = f"""
+    <div class="sidebar-item" 
+         draggable="true"
+         data-item-id="{item_id}"
+         data-name="{item.get('name', 'Unknown')}"
+         data-field="{item.get('field', '')}"
+         data-type="{item_type}"
+         data-data-type="{item.get('dataType', 'string')}"
+         data-category="{item.get('category', '')}"
+         id="item_{item_id}">
+        <div class="sidebar-item-content">
+            <span class="sidebar-item-icon">{icon}</span>
+            <span class="sidebar-item-name">{item.get('name', 'Unknown')}</span>
+        </div>
+        <button class="sidebar-add-btn" onclick="addItemToSegment('{item_id}')" title="Add to segment">
+            +
+        </button>
+    </div>
+    """
+
+    st.markdown(item_html, unsafe_allow_html=True)
+
+    # Add click handler for the + button
+    if st.button("", key=f"add_{item_id}", help="Add to segment"):
+        add_to_segment(item, item_type)
+
+
+def render_draggable_segment(segment: Dict):
+    """Render a draggable segment item"""
+
+    segment_id = f"segment_{segment.get('id', uuid.uuid4().hex[:8])}"
+
+    # Create the segment HTML
+    segment_html = f"""
+    <div class="sidebar-item"
+         draggable="true"
+         data-item-id="{segment_id}"
+         data-name="{segment.get('name', 'Unknown')}"
+         data-type="segment"
+         id="item_{segment_id}">
+        <div class="sidebar-item-content">
+            <span class="sidebar-item-icon">🎯</span>
+            <div>
+                <div class="sidebar-item-name">{segment.get('name', 'Unknown')}</div>
+                {f'<div style="font-size: 12px; color: #6e6e6e;">{segment.get("description", "")[:50]}...</div>' if segment.get('description') else ''}
+            </div>
+        </div>
+        <button class="sidebar-add-btn" onclick="addSegmentToBuilder('{segment_id}')" title="Add to segment">
+            +
+        </button>
+    </div>
+    """
+
+    st.markdown(segment_html, unsafe_allow_html=True)
+
+    # Add click handler for the + button
+    if st.button("", key=f"add_{segment_id}", help="Add segment"):
+        add_segment_to_builder(segment)
+
+
+def initialize_drag_drop_functionality():
+    """Initialize drag-and-drop functionality with JavaScript"""
+
+    drag_drop_js = """
+    <script>
+    // Drag and Drop Functionality
+    let draggedItem = null;
+
+    function initializeDragDrop() {
+        // Add drag event listeners to all draggable items
+        document.querySelectorAll('.sidebar-item[draggable="true"]').forEach(item => {
+            item.addEventListener('dragstart', handleDragStart);
+            item.addEventListener('dragend', handleDragEnd);
+        });
+
+        // Add drop event listeners to drop zones
+        document.querySelectorAll('.drop-zone, .segment-container').forEach(zone => {
+            zone.addEventListener('dragover', handleDragOver);
+            zone.addEventListener('drop', handleDrop);
+            zone.addEventListener('dragenter', handleDragEnter);
+            zone.addEventListener('dragleave', handleDragLeave);
+        });
+
+        console.log('Drag and drop initialized');
+    }
+
+    function handleDragStart(e) {
+        draggedItem = {
+            id: this.dataset.itemId,
+            name: this.dataset.name,
+            field: this.dataset.field,
+            type: this.dataset.type,
+            dataType: this.dataset.dataType || 'string',
+            category: this.dataset.category || ''
+        };
+
+        e.dataTransfer.setData('text/plain', JSON.stringify(draggedItem));
+        e.dataTransfer.effectAllowed = 'copy';
+
+        this.classList.add('dragging');
+        console.log('Drag started:', draggedItem);
+    }
+
+    function handleDragEnd(e) {
+        this.classList.remove('dragging');
+        draggedItem = null;
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    }
+
+    function handleDragEnter(e) {
+        e.preventDefault();
+        if (this.classList.contains('drop-zone') || this.classList.contains('segment-container')) {
+            this.classList.add('drag-over');
         }
     }
-    
-    # Create sections based on filter
-    sections = []
-    
-    if filter_option in ["All Components", "Dimensions"]:
-        dimensions_data = []
-        for category in config.get('dimensions', []):
-            for item in category['items']:
-                # Apply search filter
-                if not search_query or search_query in item['name'].lower():
-                    dimensions_data.append({
-                        'item': item,
-                        'category': category['category'],
-                        'type': 'dimension'
-                    })
-        if dimensions_data:
-            sections.append(('dimensions', dimensions_data))
-    
-    if filter_option in ["All Components", "Metrics"]:
-        metrics_data = []
-        for category in config.get('metrics', []):
-            for item in category['items']:
-                # Apply search filter
-                if not search_query or search_query in item['name'].lower():
-                    metrics_data.append({
-                        'item': item,
-                        'category': category['category'],
-                        'type': 'metric'
-                    })
-        if metrics_data:
-            sections.append(('metrics', metrics_data))
-    
-    if filter_option in ["All Components", "Segments"]:
-        segments_data = []
-        
-        # Start with config segments
-        all_segments = list(config.get('segments', []))
-        
-        # Add database segments
-        if 'db_segments' in st.session_state:
-            for db_seg in st.session_state.db_segments:
-                # Check if not already in list
-                if not any(s['name'] == db_seg['name'] for s in all_segments):
-                    all_segments.append(db_seg)
-        
-        # Process all segments
-        for segment in all_segments:
-            # Apply search filter - check both name and description
-            segment_name = segment.get('name', '').lower()
-            segment_desc = segment.get('description', '').lower()
-            
-            if search_query and search_query not in segment_name and search_query not in segment_desc:
-                continue
-                
-            segment_with_def = segment.copy()
-            
-            # Get definition from various sources
-            if 'definition' in segment:
-                # Already has definition
-                pass
-            elif segment['name'] in segment_definitions:
-                segment_with_def['definition'] = segment_definitions[segment['name']]
-            
-            segments_data.append({
-                'item': segment_with_def,
-                'type': 'segment'
-            })
-        
-        if segments_data:
-            sections.append(('segments', segments_data))
-    
-    # Render sections
-    for section_type, items in sections:
-        if section_type == 'dimensions':
-            render_section("DIMENSIONS", items, "📊", "#5B9BD5")
-        elif section_type == 'metrics':
-            render_section("METRICS", items, "📈", "#70AD47")
-        elif section_type == 'segments':
-            render_section("SEGMENTS", items, "🎯", "#7C4DFF")
 
-def render_section(title, items, icon, color):
-    """Render a collapsible section with items"""
-    section_key = f"section_{title.lower()}"
-    
-    # Create custom expander
-    with st.container():
-        col1, col2 = st.columns([5, 1])
-        with col1:
-            st.markdown(f"""
-            <div class="section-header">
-                <span>{icon} {title}</span>
-                <span class="section-count">{len(items)}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Items container
-        with st.expander("", expanded=True):
-            for item_data in items:
-                if item_data['type'] == 'segment':
-                    render_segment_item(item_data['item'])
-                else:
-                    render_component_item(item_data)
+    function handleDragLeave(e) {
+        if (!this.contains(e.relatedTarget)) {
+            this.classList.remove('drag-over');
+        }
+    }
 
-def render_component_item(item_data):
-    """Render a dimension or metric item"""
-    item = item_data['item']
-    item_type = item_data['type']
-    category = item_data['category']
-    
-    item_id = f"{item_type}_{item['field']}_{uuid.uuid4().hex[:6]}"
-    
-    col1, col2 = st.columns([10, 1])
-    
-    with col1:
-        icon = "📊" if item_type == 'dimension' else "📈"
-        st.markdown(f"""
-        <div class="component-item" draggable="true" data-item='{item_id}'>
-            <div class="component-name">
-                <span class="component-icon">{icon}</span>
-                <span>{item['name']}</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        # Fixed button with unique key and proper styling
-        button_key = f"add_{item_id}"
-        if st.button("➕", key=button_key, help=f"Add {item['name']}", use_container_width=True):
-            add_to_segment(item, item_type, category)
+    function handleDrop(e) {
+        e.preventDefault();
+        this.classList.remove('drag-over');
 
-def render_segment_item(segment):
-    """Render a segment item with description"""
-    segment_id = f"seg_{segment['name'].replace(' ', '_')}_{uuid.uuid4().hex[:6]}"
-    
-    col1, col2 = st.columns([10, 1])
-    
-    with col1:
-        st.markdown(f"""
-        <div class="component-item segment-item" draggable="true" data-segment='{segment_id}'>
-            <div>
-                <div class="component-name">
-                    <span class="component-icon">🎯</span>
-                    <span>{segment['name']}</span>
-                </div>
-                <div class="segment-description">{segment['description']}</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        # Fixed button with unique key
-        button_key = f"add_{segment_id}"
-        if st.button("➕", key=button_key, help=f"Add {segment['name']}", use_container_width=True):
-            add_segment_to_builder(segment)
+        if (draggedItem) {
+            console.log('Item dropped:', draggedItem);
 
-def add_to_segment(item, item_type, category):
-    """Add a dimension or metric to the current segment - FIXED TO WORK PROPERLY"""
-    # Create a properly structured condition
+            // Get container ID if available
+            const containerId = this.dataset.containerId || null;
+
+            // Send message to Streamlit
+            window.parent.postMessage({
+                type: 'add_condition',
+                data: draggedItem,
+                containerId: containerId
+            }, '*');
+
+            // Also trigger Streamlit rerun
+            if (window.streamlitRerun) {
+                window.streamlitRerun();
+            }
+        }
+    }
+
+    // Button click handlers
+    function addItemToSegment(itemId) {
+        const element = document.getElementById('item_' + itemId);
+        if (element) {
+            const itemData = {
+                id: element.dataset.itemId,
+                name: element.dataset.name,
+                field: element.dataset.field,
+                type: element.dataset.type,
+                dataType: element.dataset.dataType || 'string',
+                category: element.dataset.category || ''
+            };
+
+            console.log('Adding item via button:', itemData);
+
+            // Send message to Streamlit
+            window.parent.postMessage({
+                type: 'add_condition',
+                data: itemData
+            }, '*');
+        }
+    }
+
+    function addSegmentToBuilder(segmentId) {
+        console.log('Adding segment:', segmentId);
+
+        // Send message to Streamlit
+        window.parent.postMessage({
+            type: 'add_segment',
+            segmentId: segmentId
+        }, '*');
+    }
+
+    // Initialize when DOM is ready
+    document.addEventListener('DOMContentLoaded', initializeDragDrop);
+
+    // Reinitialize when content changes (for Streamlit updates)
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList') {
+                setTimeout(initializeDragDrop, 100);
+            }
+        });
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    // Initialize immediately as fallback
+    setTimeout(initializeDragDrop, 1000);
+    </script>
+    """
+
+    components.html(drag_drop_js, height=0)
+
+
+def add_to_segment(item: Dict, item_type: str, category: str = ''):
+    """Add a dimension or metric to the current segment"""
+
     new_condition = {
         'id': f"{item_type}_{item['field']}_{uuid.uuid4().hex[:8]}",
         'field': item['field'],
@@ -501,71 +918,130 @@ def add_to_segment(item, item_type, category):
         'category': category,
         'operator': 'equals',
         'value': '',
-        'data_type': item.get('type', 'string')
+        'data_type': item.get('dataType', 'string')
     }
-    
-    # Initialize containers if needed
-    if 'segment_definition' not in st.session_state:
-        st.session_state.segment_definition = {
-            'name': 'New Segment',
-            'description': '',
-            'container_type': 'hit',
-            'containers': [],
-            'logic': 'and'
-        }
-    
-    # Ensure containers list exists
+
+    # Add to current segment
     if not st.session_state.segment_definition.get('containers'):
-        st.session_state.segment_definition['containers'] = []
-    
-    # If no containers exist, create the first one
-    if not st.session_state.segment_definition['containers']:
-        first_container = {
+        # Create first container
+        st.session_state.segment_definition['containers'] = [{
             'id': f'container_{uuid.uuid4().hex[:8]}',
-            'type': st.session_state.segment_definition.get('container_type', 'hit'),
+            'type': 'hit',
             'include': True,
-            'conditions': [],
+            'conditions': [new_condition],
+            'children': [],
             'logic': 'and'
-        }
-        st.session_state.segment_definition['containers'].append(first_container)
-    
-    # Add condition to the first container
-    st.session_state.segment_definition['containers'][0]['conditions'].append(new_condition)
-    
-    # Success message and state updates
-    st.success(f"✅ Added {item['name']} to segment")
-    # Clear preview to force regeneration
-    st.session_state.preview_data = None
-    # Trigger segment update
-    st.session_state.segment_updated = True
-    # Force a rerun to update the UI
+        }]
+    else:
+        # Add to the first container
+        if st.session_state.segment_definition['containers']:
+            st.session_state.segment_definition['containers'][0]['conditions'].append(new_condition)
+
+    st.success(f"Added {item['name']} to segment")
     st.rerun()
 
-def add_segment_to_builder(segment):
-    """Load a pre-built segment to the builder - FIXED"""
+
+def add_segment_to_builder(segment: Dict):
+    """Add a pre-built segment to the builder"""
+
+    # Check if segment has a complete definition
     if 'definition' in segment and segment['definition']:
-        # Deep copy the segment definition
-        import copy
-        new_definition = copy.deepcopy(segment['definition'])
-        
-        # Ensure all required fields are present
-        if 'name' not in new_definition:
-            new_definition['name'] = segment.get('name', 'Unnamed Segment')
-        if 'description' not in new_definition:
-            new_definition['description'] = segment.get('description', '')
-        if 'container_type' not in new_definition:
-            new_definition['container_type'] = 'hit'
-        if 'logic' not in new_definition:
-            new_definition['logic'] = 'and'
-        if 'containers' not in new_definition:
-            new_definition['containers'] = []
-        
-        # Update session state
-        st.session_state.segment_definition = new_definition
-        # Clear preview data to force regeneration
-        st.session_state.preview_data = None
-        st.success(f"✅ Loaded segment: {segment['name']}")
-        # Force rerun
-        st.rerun()
+        # Load the complete segment definition
+        st.session_state.segment_definition = segment['definition'].copy()
+        st.success(f"Loaded segment: {segment['name']}")
+    elif 'containers' in segment:
+        # Use the segment structure directly
+        st.session_state.segment_definition = {
+            'name': segment.get('name', 'Imported Segment'),
+            'description': segment.get('description', ''),
+            'container_type': segment.get('container_type', 'hit'),
+            'logic': segment.get('logic', 'and'),
+            'containers': segment.get('containers', [])
+        }
+        st.success(f"Loaded segment: {segment['name']}")
     else:
-        st.error(f"Segment {segment['name']} has no complete definition")
+        # Create a basic container with the segment as a condition
+        new_condition = {
+            'id': f"segment_{segment.get('id', uuid.uuid4().hex[:8])}",
+            'field': 'segment',
+            'name': segment.get('name', 'Unknown Segment'),
+            'type': 'segment',
+            'operator': 'matches',
+            'value': segment.get('id', ''),
+            'data_type': 'segment'
+        }
+
+        if not st.session_state.segment_definition.get('containers'):
+            st.session_state.segment_definition['containers'] = [{
+                'id': f'container_{uuid.uuid4().hex[:8]}',
+                'type': 'hit',
+                'include': True,
+                'conditions': [new_condition],
+                'children': [],
+                'logic': 'and'
+            }]
+        else:
+            st.session_state.segment_definition['containers'][0]['conditions'].append(new_condition)
+
+        st.success(f"Added segment condition: {segment['name']}")
+
+    st.rerun()
+
+
+def handle_sidebar_messages():
+    """Handle messages from sidebar drag-and-drop"""
+
+    # This function can be called by the main app to handle messages
+    # Implementation depends on your message handling setup
+    pass
+
+
+# Search functionality
+def render_search_box():
+    """Render search box for filtering sidebar items"""
+
+    search_term = st.text_input(
+        "Search components...",
+        key="sidebar_search",
+        placeholder="Type to search dimensions, metrics, segments..."
+    )
+
+    if search_term:
+        st.session_state.sidebar_search = search_term.lower()
+    else:
+        st.session_state.sidebar_search = ""
+
+
+def filter_items_by_search(items: List[Dict], search_term: str) -> List[Dict]:
+    """Filter items based on search term"""
+
+    if not search_term:
+        return items
+
+    filtered_items = []
+    for item in items:
+        # Search in name, field, and category
+        searchable_text = f"{item.get('name', '')} {item.get('field', '')} {item.get('category', '')}".lower()
+        if search_term in searchable_text:
+            filtered_items.append(item)
+
+    return filtered_items
+
+
+# Utility functions
+def get_item_icon(item_type: str) -> str:
+    """Get icon for item type"""
+    icons = {
+        'dimension': '📊',
+        'metric': '📈',
+        'segment': '🎯'
+    }
+    return icons.get(item_type, '📄')
+
+
+def format_item_name(item: Dict) -> str:
+    """Format item name for display"""
+    name = item.get('name', 'Unknown')
+    if len(name) > 30:
+        return name[:27] + '...'
+    return name
