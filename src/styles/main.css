@@ -422,3 +422,24 @@ footer {visibility: hidden;}
 ::-webkit-scrollbar-thumb:hover {
     background: #A0A0A0;
 }
+
+/* Nested container styling */
+.container[data-level="1"] {
+    border-color: #d3d3d3;
+    margin-left: 20px;
+}
+.container[data-level="2"] {
+    border-color: #b7b7b7;
+    margin-left: 40px;
+}
+.child-drop-zone, .drop-zone {
+    min-height: 40px;
+    border: 2px dashed var(--adobe-border-dark);
+    background: var(--adobe-container-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--adobe-text-secondary);
+    margin: 8px 0;
+    font-size: 13px;
+}

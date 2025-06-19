@@ -1,10 +1,16 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import json
+from src.database.queries import load_saved_segments
 
 def render_integrated_builder(config, segment_definition):
     """Render an integrated drag and drop builder with sidebar and segment area"""
-    
+    if 'db_segments' not in st.session_state:
+        try:
+            st.session_state.db_segments = load_saved_segments()
+        except Exception:
+            st.session_state.db_segments = []
+
     # Convert config to JSON for JavaScript
     dimensions = []
     for cat in config.get('dimensions', []):
@@ -29,11 +35,17 @@ def render_integrated_builder(config, segment_definition):
             })
     
     segments = config.get('segments', [])
+
+    if st.session_state.get('db_segments'):
+        segments.extend(st.session_state.db_segments)
     
     # Current segment definition
     current_segment = json.dumps(segment_definition)
-    
-    html_content = f"""
+    dimensions_json = json.dumps(dimensions)
+    metrics_json = json.dumps(metrics)
+    segments_json = json.dumps(segments)
+
+    html_content = """
     <!DOCTYPE html>
     <html>
     <head>
@@ -306,9 +318,9 @@ def render_integrated_builder(config, segment_definition):
         
         <script>
             // Data from Python
-            const dimensions = {json.dumps(dimensions)};
-            const metrics = {json.dumps(metrics)};
-            const segments = {json.dumps(segments)};
+            const dimensions = {dimensions_json};
+            const metrics = {metrics_json};
+            const segments = {segments_json};
             let currentSegment = {current_segment};
             
             // Initialize sidebar
@@ -362,17 +374,33 @@ def render_integrated_builder(config, segment_definition):
                 return div;
             }}
             
-            function addToSegment(data) {{
+            function getContainerByPath(path) {{
+                const parts = path.split('-').map(p => parseInt(p));
+                let obj = null;
+                let arr = currentSegment.containers;
+                for (let i = 0; i < parts.length; i++) {{
+                    obj = arr[parts[i]];
+                    if (!obj) return null;
+                    if (i < parts.length - 1) arr = obj.children;
+                }}
+                return obj;
+            }}
+
+            function addToSegment(data, path='0') {{
                 if (!currentSegment.containers || currentSegment.containers.length === 0) {{
                     currentSegment.containers = [{{
                         id: 'container_' + Date.now(),
                         type: 'hit',
                         include: true,
                         conditions: [],
+                        children: [],
                         logic: 'and'
                     }}];
                 }}
-                
+
+                const target = getContainerByPath(path);
+                if (!target) return;
+
                 const condition = {{
                     id: data.type + '_' + data.field + '_' + Date.now(),
                     field: data.field || '',
@@ -383,8 +411,8 @@ def render_integrated_builder(config, segment_definition):
                     value: '',
                     data_type: data.dataType || 'string'
                 }};
-                
-                currentSegment.containers[0].conditions.push(condition);
+
+                target.conditions.push(condition);
                 renderSegment();
                 sendToStreamlit();
             }}
@@ -420,9 +448,11 @@ def render_integrated_builder(config, segment_definition):
                 }}
             }}
             
-            function createContainer(container, idx) {{
+            function createContainer(container, path, level) {{
                 const div = document.createElement('div');
                 div.className = 'container';
+                div.dataset.level = level;
+                div.style.marginLeft = (level * 20) + 'px';
                 
                 // Container header
                 const header = document.createElement('div');
@@ -430,22 +460,22 @@ def render_integrated_builder(config, segment_definition):
                 header.innerHTML = `
                     <div class="container-controls">
                         <label>
-                            <input type="radio" name="include_${{idx}}" value="include" ${{container.include ? 'checked' : ''}}
-                                   onchange="updateContainer(${{idx}}, 'include', true)">
+                            <input type="radio" name="include_${{path}}" value="include" ${{container.include ? 'checked' : ''}}
+                                   onchange="updateContainer(${path}, 'include', true)">
                             <span style="color: #E34850;">●</span> Include
                         </label>
                         <label>
-                            <input type="radio" name="include_${{idx}}" value="exclude" ${{!container.include ? 'checked' : ''}}
-                                   onchange="updateContainer(${{idx}}, 'include', false)">
+                            <input type="radio" name="include_${{path}}" value="exclude" ${{!container.include ? 'checked' : ''}}
+                                   onchange="updateContainer(${path}, 'include', false)">
                             <span style="color: #2C2C2C;">●</span> Exclude
                         </label>
-                        <select onchange="updateContainer(${{idx}}, 'type', this.value)">
+                        <select onchange="updateContainer(${path}, 'type', this.value)">
                             <option value="hit" ${{container.type === 'hit' ? 'selected' : ''}}>Hit (Page View)</option>
                             <option value="visit" ${{container.type === 'visit' ? 'selected' : ''}}>Visit (Session)</option>
                             <option value="visitor" ${{container.type === 'visitor' ? 'selected' : ''}}>Visitor</option>
                         </select>
                     </div>
-                    <button class="remove-btn" onclick="removeContainer(${{idx}})">✕</button>
+                    <button class="remove-btn" onclick="removeContainer(${path})">✕</button>
                 `;
                 div.appendChild(header);
                 
@@ -455,7 +485,7 @@ def render_integrated_builder(config, segment_definition):
                         const logic = document.createElement('div');
                         logic.className = 'logic-operator';
                         logic.innerHTML = `
-                            <select onchange="updateContainer(${{idx}}, 'logic', this.value)">
+                            <select onchange="updateContainer(${path}, 'logic', this.value)">
                                 <option value="and" ${{container.logic === 'and' ? 'selected' : ''}}>And</option>
                                 <option value="or" ${{container.logic === 'or' ? 'selected' : ''}}>Or</option>
                                 <option value="then" ${{container.logic === 'then' ? 'selected' : ''}}>Then</option>
@@ -463,7 +493,7 @@ def render_integrated_builder(config, segment_definition):
                         `;
                         div.appendChild(logic);
                     }}
-                    div.appendChild(createCondition(condition, idx, condIdx));
+                    div.appendChild(createCondition(condition, path, condIdx));
                 }});
                 
                 // Add rule button
@@ -472,11 +502,40 @@ def render_integrated_builder(config, segment_definition):
                 addRuleBtn.innerHTML = '<span style="font-size: 18px;">➕</span> Add Rule';
                 addRuleBtn.onclick = () => alert('Drag a dimension or metric from the left panel');
                 div.appendChild(addRuleBtn);
-                
+
+                const addChildBtn = document.createElement('button');
+                addChildBtn.className = 'add-rule-btn';
+                addChildBtn.innerHTML = '<span style="font-size: 18px;">➕</span> Add Subcontainer';
+                addChildBtn.onclick = () => addContainer(path);
+                div.appendChild(addChildBtn);
+
+                div.addEventListener('dragover', (e) => {{
+                    e.preventDefault();
+                    div.classList.add('drag-over');
+                }});
+                div.addEventListener('dragleave', () => {{
+                    div.classList.remove('drag-over');
+                }});
+                div.addEventListener('drop', (e) => {{
+                    e.preventDefault();
+                    div.classList.remove('drag-over');
+                    try {{
+                        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+                        addToSegment(data, path);
+                    }} catch (err) {{
+                        console.error('Drop error:', err);
+                    }}
+                }});
+
+                container.children = container.children || [];
+                container.children.forEach((child, cIdx) => {
+                    div.appendChild(createContainer(child, `\${{path}}-\${{cIdx}}`, level + 1));
+                });
+
                 return div;
             }}
             
-            function createCondition(condition, containerIdx, condIdx) {{
+            function createCondition(condition, path, condIdx) {{
                 const div = document.createElement('div');
                 div.className = 'condition';
                 
@@ -487,7 +546,7 @@ def render_integrated_builder(config, segment_definition):
                         <span>${{icon}}</span>
                         <span>${{condition.name}}</span>
                     </div>
-                    <select onchange="updateCondition(${{containerIdx}}, ${{condIdx}}, 'operator', this.value)">
+                    <select onchange="updateCondition(${path}, ${condIdx}, 'operator', this.value)">
                         <option value="equals" ${{condition.operator === 'equals' ? 'selected' : ''}}>equals</option>
                         <option value="not_equals" ${{condition.operator === 'not_equals' ? 'selected' : ''}}>does not equal</option>
                         <option value="contains" ${{condition.operator === 'contains' ? 'selected' : ''}}>contains</option>
@@ -495,8 +554,8 @@ def render_integrated_builder(config, segment_definition):
                         <option value="less_than" ${{condition.operator === 'less_than' ? 'selected' : ''}}>less than</option>
                     </select>
                     <input type="text" placeholder="Enter Value" value="${{condition.value || ''}}"
-                           onchange="updateCondition(${{containerIdx}}, ${{condIdx}}, 'value', this.value)">
-                    <button class="remove-btn" onclick="removeCondition(${{containerIdx}}, ${{condIdx}})">✕</button>
+                           onchange="updateCondition(${path}, ${condIdx}, 'value', this.value)">
+                    <button class="remove-btn" onclick="removeCondition(${path}, ${condIdx})">✕</button>
                 `;
                 
                 return div;
@@ -528,38 +587,55 @@ def render_integrated_builder(config, segment_definition):
                 }});
             }}
             
-            function addContainer() {{
+            function addContainer(path=null) {{
                 if (!currentSegment.containers) currentSegment.containers = [];
-                currentSegment.containers.push({{
+                const newC = {{
                     id: 'container_' + Date.now(),
                     type: 'hit',
                     include: true,
                     conditions: [],
+                    children: [],
                     logic: 'and'
-                }});
+                }};
+                if (!path) {{
+                    currentSegment.containers.push(newC);
+                }} else {{
+                    const parent = getContainerByPath(path);
+                    if (parent) parent.children.push(newC);
+                }}
                 renderSegment();
                 sendToStreamlit();
             }}
             
-            function removeContainer(idx) {{
-                currentSegment.containers.splice(idx, 1);
+            function removeContainer(path) {{
+                const parts = path.split('-').map(p => parseInt(p));
+                let arr = currentSegment.containers;
+                for (let i = 0; i < parts.length - 1; i++) {{
+                    arr = arr[parts[i]].children;
+                }}
+                arr.splice(parts[parts.length - 1], 1);
                 renderSegment();
                 sendToStreamlit();
             }}
-            
-            function updateContainer(idx, field, value) {{
-                currentSegment.containers[idx][field] = value;
+
+            function updateContainer(path, field, value) {{
+                const target = getContainerByPath(path);
+                if (target) target[field] = value;
                 sendToStreamlit();
             }}
-            
-            function removeCondition(containerIdx, condIdx) {{
-                currentSegment.containers[containerIdx].conditions.splice(condIdx, 1);
-                renderSegment();
-                sendToStreamlit();
+
+            function removeCondition(path, condIdx) {{
+                const target = getContainerByPath(path);
+                if (target) {{
+                    target.conditions.splice(condIdx, 1);
+                    renderSegment();
+                    sendToStreamlit();
+                }}
             }}
-            
-            function updateCondition(containerIdx, condIdx, field, value) {{
-                currentSegment.containers[containerIdx].conditions[condIdx][field] = value;
+
+            function updateCondition(path, condIdx, field, value) {{
+                const target = getContainerByPath(path);
+                if (target) target.conditions[condIdx][field] = value;
                 sendToStreamlit();
             }}
             
@@ -579,4 +655,11 @@ def render_integrated_builder(config, segment_definition):
     </html>
     """
     
+    html_content = html_content.format(
+        dimensions_json=dimensions_json,
+        metrics_json=metrics_json,
+        segments_json=segments_json,
+        current_segment=current_segment
+    )
+
     return components.html(html_content, height=600, scrolling=True)

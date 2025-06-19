@@ -217,8 +217,8 @@ def render_drag_drop_builder():
                     <div class="draggable-item metric-item" draggable="true" data-type="metric" data-field="revenue" data-name="Revenue">
                         <span>💰</span> Revenue
                     </div>
-                    <div class="draggable-item metric-item" draggable="true" data-type="metric" data-field="page_views" data-name="Page Views">
-                        <span>👁️</span> Page Views
+                    <div class="draggable-item metric-item" draggable="true" data-type="metric" data-field="pages_viewed" data-name="Pages Viewed">
+                        <span>👁️</span> Pages Viewed
                     </div>
                     <div class="draggable-item metric-item" draggable="true" data-type="metric" data-field="time_on_page" data-name="Time on Page">
                         <span>⏱️</span> Time on Page
@@ -251,6 +251,17 @@ def render_drag_drop_builder():
         <script>
             let draggedElement = null;
             let containers = [];
+
+            function createContainer() {
+                return {
+                    id: 'container_' + Math.random().toString(36).substr(2,5),
+                    type: 'visit',
+                    include: true,
+                    conditions: [],
+                    logic: 'and',
+                    children: []
+                };
+            }
             
             // Drag start
             document.querySelectorAll('.draggable-item').forEach(item => {
@@ -286,14 +297,16 @@ def render_drag_drop_builder():
                 }
             });
             
-            function addConditionToSegment(type, field, name) {
+            function addConditionToSegment(type, field, name, path='0') {
                 // Clear empty state
                 if (containers.length === 0) {
                     dropZone.innerHTML = '';
                     addContainer();
                 }
-                
-                // Add condition to first container
+
+                const target = getContainerByPath(path);
+                if (!target) return;
+
                 const condition = {
                     type: type,
                     field: field,
@@ -301,87 +314,39 @@ def render_drag_drop_builder():
                     operator: 'equals',
                     value: ''
                 };
-                
-                containers[0].conditions.push(condition);
+                target.conditions.push(condition);
                 renderSegment();
             }
-            
-            function addContainer() {
-                const container = {
-                    id: 'container_' + containers.length,
-                    type: 'visit',
-                    include: true,
-                    conditions: [],
-                    logic: 'and'
-                };
-                containers.push(container);
+
+            function addContainer(path=null) {
+                const newC = createContainer();
+                if (!path) {
+                    containers.push(newC);
+                } else {
+                    const parent = getContainerByPath(path);
+                    if (parent) parent.children.push(newC);
+                }
+            }
+
+            function getContainerByPath(path) {
+                const parts = path.split('-').map(p => parseInt(p));
+                let obj = null;
+                let arr = containers;
+                for (let i=0; i<parts.length; i++) {
+                    obj = arr[parts[i]];
+                    if (!obj) return null;
+                    if (i < parts.length-1) arr = obj.children;
+                }
+                return obj;
             }
             
             function renderSegment() {
                 dropZone.innerHTML = '';
-                
-                containers.forEach((container, containerIdx) => {
-                    const containerEl = document.createElement('div');
-                    containerEl.className = 'container';
-                    
-                    // Container header
-                    containerEl.innerHTML = `
-                        <div class="container-header">
-                            <div>
-                                <select class="container-type" data-container="${containerIdx}">
-                                    <option value="hit" ${container.type === 'hit' ? 'selected' : ''}>Hit (Page View)</option>
-                                    <option value="visit" ${container.type === 'visit' ? 'selected' : ''}>Visit (Session)</option>
-                                    <option value="visitor" ${container.type === 'visitor' ? 'selected' : ''}>Visitor</option>
-                                </select>
-                                <label>
-                                    <input type="radio" name="include_${containerIdx}" value="include" ${container.include ? 'checked' : ''}> Include
-                                </label>
-                                <label>
-                                    <input type="radio" name="include_${containerIdx}" value="exclude" ${!container.include ? 'checked' : ''}> Exclude
-                                </label>
-                            </div>
-                            <button class="btn-danger" onclick="removeContainer(${containerIdx})">Remove</button>
-                        </div>
-                    `;
-                    
-                    // Conditions
-                    container.conditions.forEach((condition, condIdx) => {
-                        if (condIdx > 0) {
-                            containerEl.innerHTML += `
-                                <div class="logic-operator">${container.logic.toUpperCase()}</div>
-                            `;
-                        }
-                        
-                        const conditionEl = document.createElement('div');
-                        conditionEl.className = 'condition';
-                        conditionEl.innerHTML = `
-                            <div class="condition-field">${condition.name}</div>
-                            <select class="condition-operator" data-container="${containerIdx}" data-condition="${condIdx}">
-                                <option value="equals">equals</option>
-                                <option value="not_equals">does not equal</option>
-                                <option value="contains">contains</option>
-                                <option value="greater_than">greater than</option>
-                                <option value="less_than">less than</option>
-                            </select>
-                            <input type="text" class="condition-value" placeholder="Enter value" 
-                                   data-container="${containerIdx}" data-condition="${condIdx}" 
-                                   value="${condition.value}">
-                            <button class="btn-danger" onclick="removeCondition(${containerIdx}, ${condIdx})">×</button>
-                        `;
-                        containerEl.appendChild(conditionEl);
-                    });
-                    
-                    // Add condition button
-                    containerEl.innerHTML += `
-                        <button class="btn-primary" onclick="addCondition(${containerIdx})" style="margin-top: 10px;">
-                            + Add Condition
-                        </button>
-                    `;
-                    
-                    dropZone.appendChild(containerEl);
+
+                containers.forEach((container, idx) => {
+                    renderContainer(container, `${idx}`, dropZone, 0);
                 });
-                
-                // Add container button
+
                 const addContainerBtn = document.createElement('button');
                 addContainerBtn.className = 'btn-primary';
                 addContainerBtn.textContent = '+ Add Container';
@@ -393,21 +358,103 @@ def render_drag_drop_builder():
                 addContainerBtn.style.marginTop = '20px';
                 dropZone.appendChild(addContainerBtn);
             }
+
+            function renderContainer(container, path, parentEl, level) {
+                const containerEl = document.createElement('div');
+                containerEl.className = 'container';
+                containerEl.style.marginLeft = (level * 20) + 'px';
+
+                containerEl.innerHTML = `
+                    <div class="container-header">
+                        <div>
+                            <select class="container-type" data-path="${path}">
+                                <option value="hit" ${container.type === 'hit' ? 'selected' : ''}>Hit (Page View)</option>
+                                <option value="visit" ${container.type === 'visit' ? 'selected' : ''}>Visit (Session)</option>
+                                <option value="visitor" ${container.type === 'visitor' ? 'selected' : ''}>Visitor</option>
+                            </select>
+                            <label>
+                                <input type="radio" name="include_${path}" value="include" ${container.include ? 'checked' : ''}> Include
+                            </label>
+                            <label>
+                                <input type="radio" name="include_${path}" value="exclude" ${!container.include ? 'checked' : ''}> Exclude
+                            </label>
+                        </div>
+                        <button class="btn-danger" onclick="removeContainer('${path}')">Remove</button>
+                    </div>
+                `;
+
+                container.conditions.forEach((condition, cIdx) => {
+                    if (cIdx > 0) {
+                        containerEl.innerHTML += `<div class="logic-operator">${container.logic.toUpperCase()}</div>`;
+                    }
+                    const conditionEl = document.createElement('div');
+                    conditionEl.className = 'condition';
+                    conditionEl.innerHTML = `
+                        <div class="condition-field">${condition.name}</div>
+                        <select class="condition-operator" data-path="${path}" data-condition="${cIdx}">
+                            <option value="equals">equals</option>
+                            <option value="not_equals">does not equal</option>
+                            <option value="contains">contains</option>
+                            <option value="greater_than">greater than</option>
+                            <option value="less_than">less than</option>
+                        </select>
+                        <input type="text" class="condition-value" placeholder="Enter value"
+                               data-path="${path}" data-condition="${cIdx}"
+                               value="${condition.value}">
+                        <button class="btn-danger" onclick="removeCondition('${path}', ${cIdx})">×</button>`;
+                    containerEl.appendChild(conditionEl);
+                });
+
+                containerEl.innerHTML += `<button class="btn-primary" onclick="addConditionToSegmentPrompt('${path}')" style="margin-top:10px;">+ Add Condition</button>`;
+                containerEl.innerHTML += `<button class="btn-primary" onclick="addContainer('${path}')" style="margin-left:10px;">+ Add Subcontainer</button>`;
+
+                containerEl.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    containerEl.classList.add('drag-over');
+                });
+                containerEl.addEventListener('dragleave', () => {
+                    containerEl.classList.remove('drag-over');
+                });
+                containerEl.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    containerEl.classList.remove('drag-over');
+                    if (draggedElement) {
+                        const type = draggedElement.dataset.type;
+                        const field = draggedElement.dataset.field;
+                        const name = draggedElement.dataset.name;
+                        addConditionToSegment(type, field, name, path);
+                        updateStreamlit();
+                    }
+                });
+
+                parentEl.appendChild(containerEl);
+
+                container.children.forEach((child, idx) => {
+                    renderContainer(child, `${path}-${idx}`, parentEl, level + 1);
+                });
+            }
             
-            function removeContainer(idx) {
-                containers.splice(idx, 1);
+            function removeContainer(path) {
+                const parts = path.split('-').map(p => parseInt(p));
+                let arr = containers;
+                for (let i=0; i<parts.length-1; i++) {
+                    arr = arr[parts[i]].children;
+                }
+                arr.splice(parts[parts.length-1], 1);
                 renderSegment();
                 updateStreamlit();
             }
-            
-            function removeCondition(containerIdx, condIdx) {
-                containers[containerIdx].conditions.splice(condIdx, 1);
-                renderSegment();
-                updateStreamlit();
+
+            function removeCondition(path, condIdx) {
+                const target = getContainerByPath(path);
+                if (target) {
+                    target.conditions.splice(condIdx, 1);
+                    renderSegment();
+                    updateStreamlit();
+                }
             }
-            
-            function addCondition(containerIdx) {
-                // Placeholder for manual condition add
+
+            function addConditionToSegmentPrompt(path) {
                 alert('Select a dimension or metric from the left panel');
             }
             
@@ -422,22 +469,26 @@ def render_drag_drop_builder():
             // Listen for changes
             document.addEventListener('change', (e) => {
                 if (e.target.classList.contains('container-type')) {
-                    const idx = parseInt(e.target.dataset.container);
-                    containers[idx].type = e.target.value;
+                    const path = e.target.dataset.path;
+                    const c = getContainerByPath(path);
+                    if (c) c.type = e.target.value;
                 }
                 else if (e.target.classList.contains('condition-operator')) {
-                    const containerIdx = parseInt(e.target.dataset.container);
+                    const path = e.target.dataset.path;
                     const condIdx = parseInt(e.target.dataset.condition);
-                    containers[containerIdx].conditions[condIdx].operator = e.target.value;
+                    const c = getContainerByPath(path);
+                    if (c) c.conditions[condIdx].operator = e.target.value;
                 }
                 else if (e.target.classList.contains('condition-value')) {
-                    const containerIdx = parseInt(e.target.dataset.container);
+                    const path = e.target.dataset.path;
                     const condIdx = parseInt(e.target.dataset.condition);
-                    containers[containerIdx].conditions[condIdx].value = e.target.value;
+                    const c = getContainerByPath(path);
+                    if (c) c.conditions[condIdx].value = e.target.value;
                 }
                 else if (e.target.type === 'radio') {
-                    const containerIdx = parseInt(e.target.name.split('_')[1]);
-                    containers[containerIdx].include = e.target.value === 'include';
+                    const path = e.target.name.replace('include_', '');
+                    const c = getContainerByPath(path);
+                    if (c) c.include = e.target.value === 'include';
                 }
                 
                 updateStreamlit();

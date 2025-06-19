@@ -545,7 +545,7 @@ def get_saved_segments():
                     'include': True,
                     'conditions': [{
                         'id': 'cond_pv_1',
-                        'field': 'total_hits',
+                        'field': 'page_views',
                         'name': 'Page Views',
                         'type': 'metric',
                         'category': 'Engagement',
@@ -652,9 +652,11 @@ def load_segment_to_builder(segment):
         
         # Load into session state
         st.session_state.segment_definition = definition
-        
-        # Clear preview data to force regeneration
+
+        # Reset preview selector and clear preview data
+        st.session_state.preview_segment_selector = "Current Segment"
         st.session_state.preview_data = None
+        st.session_state.last_preview_segment = None
         
         # Switch to builder tab
         st.session_state.active_tab = 0
@@ -680,10 +682,12 @@ def load_segment_and_preview(segment):
         
         # Load into session state
         st.session_state.segment_definition = definition
-        
-        # Clear preview data to force regeneration
+
+        # Reset preview selector and clear preview data
+        st.session_state.preview_segment_selector = "Current Segment"
         st.session_state.preview_data = None
-        
+        st.session_state.last_preview_segment = None
+
         # Switch to preview tab
         st.session_state.active_tab = 1
         

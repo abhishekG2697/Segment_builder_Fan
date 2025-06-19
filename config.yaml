@@ -16,12 +16,15 @@ dimensions:
     items:
       - name: "Page URL"
         field: "page_url"
+        table: "hits"
         type: "string"
       - name: "Page Title"
         field: "page_title"
+        table: "hits"
         type: "string"
       - name: "Page Type"
         field: "page_type"
+        table: "hits"
         type: "string"
         values: ["Home", "Product", "Category", "Checkout", "Search"]
 
@@ -29,13 +32,16 @@ dimensions:
     items:
       - name: "Browser Name"
         field: "browser_name"
+        table: "hits"
         type: "string"
         values: ["Chrome", "Firefox", "Safari", "Edge", "Other"]
       - name: "Browser Version"
         field: "browser_version"
+        table: "hits"
         type: "string"
       - name: "Device Type"
         field: "device_type"
+        table: "hits"
         type: "string"
         values: ["Desktop", "Mobile", "Tablet"]
 
@@ -43,29 +49,36 @@ dimensions:
     items:
       - name: "User ID"
         field: "user_id"
+        table: "hits"
         type: "string"
       - name: "User Type"
         field: "user_type"
+        table: "users"
         type: "string"
         values: ["New", "Returning", "Registered"]
       - name: "Country"
         field: "country"
+        table: "hits"
         type: "string"
       - name: "City"
         field: "city"
+        table: "hits"
         type: "string"
 
   - category: "Traffic"
     items:
       - name: "Campaign"
         field: "campaign"
+        table: "hits"
         type: "string"
       - name: "Source"
         field: "traffic_source"
+        table: "hits"
         type: "string"
         values: ["Direct", "Organic", "Paid", "Social", "Email", "Referral"]
       - name: "Medium"
         field: "traffic_medium"
+        table: "hits"
         type: "string"
 
 metrics:
@@ -73,36 +86,42 @@ metrics:
     items:
       - name: "Page Views"
         field: "page_views"
+        table: "sessions"
         type: "number"
         aggregation: "sum"
       - name: "Time on Page"
         field: "time_on_page"
+        table: "hits"
         type: "number"
         aggregation: "avg"
         unit: "seconds"
       - name: "Bounce Rate"
         field: "bounce_rate"
+        table: "hits"
         type: "number"
-        aggregation: "avg"
-        unit: "%"
+        aggregation: "sum"
 
   - category: "Commerce"
     items:
       - name: "Revenue"
         field: "revenue"
+        table: "hits"
         type: "number"
         aggregation: "sum"
         unit: "$"
       - name: "Orders"
         field: "orders"
+        table: "users"
         type: "number"
         aggregation: "sum"
       - name: "Products Viewed"
         field: "products_viewed"
+        table: "hits"
         type: "number"
         aggregation: "sum"
       - name: "Cart Additions"
         field: "cart_additions"
+        table: "hits"
         type: "number"
         aggregation: "sum"
 
@@ -114,7 +133,7 @@ segments:
     description: "All mobile device traffic"
     container_type: "hit"
   - name: "Engaged Sessions"
-    description: "Sessions with 5+ page views"
+    description: "Sessions with 5+ pages viewed"
     container_type: "visit"
 
 operators:
