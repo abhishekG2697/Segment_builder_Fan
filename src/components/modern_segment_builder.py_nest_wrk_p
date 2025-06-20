@@ -18,10 +18,6 @@ def render_modern_segment_builder():
     _init_session_state()
     _apply_adobe_styling()
     config = _get_database_config()
-
-    # Handle preview requests in real-time
-    _handle_preview_requests()
-
     _render_adobe_segment_builder(config)
 
 
@@ -63,195 +59,6 @@ def _apply_adobe_styling():
     }
     </style>
     """, unsafe_allow_html=True)
-
-
-def _handle_preview_requests():
-    """Handle real-time preview requests from React component"""
-
-    # JavaScript to inject for handling preview requests
-    preview_js = """
-    <script>
-    window.addEventListener('message', function(event) {
-        if (event.data && event.data.type === 'segmentPreview' && event.data.executeNow) {
-            // Send SQL to Streamlit for execution
-            const sql = event.data.sql;
-            
-            // Use Streamlit's component communication
-            window.parent.postMessage({
-                type: 'streamlit:componentReady',
-                sql: sql,
-                executeQuery: true
-            }, '*');
-            
-            // Execute the SQL query via fetch to Python backend
-            fetch('/preview_segment', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    sql: sql,
-                    segment: event.data.segment
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                // Send results back to React component
-                event.source.postMessage({
-                    type: 'previewResults',
-                    sql: sql,
-                    rows: data.rows || [],
-                    columns: data.columns || [],
-                    is_default: data.is_default || false
-                }, '*');
-            })
-            .catch(error => {
-                console.error('Preview error:', error);
-                // Send error response
-                event.source.postMessage({
-                    type: 'previewResults',
-                    sql: sql,
-                    rows: [],
-                    columns: [],
-                    error: error.message
-                }, '*');
-            });
-        }
-    });
-    </script>
-    """
-
-    st.components.v1.html(preview_js, height=0)
-    """Get configuration from actual database"""
-    try:
-        db_path = Path("data/analytics.db")
-        conn = sqlite3.connect(str(db_path))
-        cursor = conn.cursor()
-
-        # Get REAL database statistics from SQLite
-        stats = _get_database_stats(cursor)
-        st.session_state.database_stats = stats
-
-        saved_segments = _get_saved_segments(cursor)
-        st.session_state.saved_segments = saved_segments
-        conn.close()
-
-        return {
-            'dimensions': [
-                {'category': 'Page', 'items': [
-                    {'name': 'Page URL', 'field': 'page_url', 'category': 'Page', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📄'},
-                    {'name': 'Page Title', 'field': 'page_title', 'category': 'Page', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📋'},
-                    {'name': 'Page Type', 'field': 'page_type', 'category': 'Page', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📑'},
-                ]},
-                {'category': 'Technology', 'items': [
-                    {'name': 'Device Type', 'field': 'device_type', 'category': 'Technology', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📱'},
-                    {'name': 'Browser', 'field': 'browser_name', 'category': 'Technology', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '🌐'},
-                    {'name': 'Browser Version', 'field': 'browser_version', 'category': 'Technology',
-                     'type': 'dimension', 'dataType': 'string', 'icon': '🔢'},
-                ]},
-                {'category': 'Geography', 'items': [
-                    {'name': 'Country', 'field': 'country', 'category': 'Geography', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '🌍'},
-                    {'name': 'City', 'field': 'city', 'category': 'Geography', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '🏙️'},
-                ]},
-                {'category': 'Traffic', 'items': [
-                    {'name': 'Traffic Source', 'field': 'traffic_source', 'category': 'Traffic', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '🚦'},
-                    {'name': 'Traffic Medium', 'field': 'traffic_medium', 'category': 'Traffic', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📊'},
-                    {'name': 'Campaign', 'field': 'campaign', 'category': 'Traffic', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📢'},
-                ]}
-            ],
-            'metrics': [
-                {'category': 'Commerce', 'items': [
-                    {'name': 'Revenue', 'field': 'revenue', 'category': 'Commerce', 'type': 'metric',
-                     'dataType': 'number', 'icon': '💰'},
-                    {'name': 'Products Viewed', 'field': 'products_viewed', 'category': 'Commerce', 'type': 'metric',
-                     'dataType': 'number', 'icon': '👁️'},
-                    {'name': 'Cart Additions', 'field': 'cart_additions', 'category': 'Commerce', 'type': 'metric',
-                     'dataType': 'number', 'icon': '🛒'},
-                ]},
-                {'category': 'Engagement', 'items': [
-                    {'name': 'Time on Page', 'field': 'time_on_page', 'category': 'Engagement', 'type': 'metric',
-                     'dataType': 'number', 'icon': '⏱️'},
-                    {'name': 'Bounce', 'field': 'bounce', 'category': 'Engagement', 'type': 'metric',
-                     'dataType': 'number', 'icon': '⏭️'},
-                ]}
-            ],
-            'segments': saved_segments + [
-                {'name': 'Mobile Users', 'description': 'Users on mobile devices', 'icon': '📱', 'type': 'segment'},
-                {'name': 'High Value Customers', 'description': 'Revenue > $100', 'icon': '💎', 'type': 'segment'},
-                {'name': 'Bounce Visitors', 'description': 'Single page visits', 'icon': '⏭️', 'type': 'segment'},
-                {'name': 'Chrome Users', 'description': 'Users using Chrome browser', 'icon': '🌐', 'type': 'segment'},
-                {'name': 'Desktop Traffic', 'description': 'Desktop device users', 'icon': '🖥️', 'type': 'segment'},
-            ],
-            'database_stats': stats
-        }
-    except Exception as e:
-        st.error(f"Error getting database config: {e}")
-        return {'dimensions': [], 'metrics': [], 'segments': [], 'database_stats': {}}
-
-
-def _get_database_stats(cursor):
-    """Get REAL database statistics from SQLite"""
-    stats = {}
-    try:
-        # Total hits
-        cursor.execute("SELECT COUNT(*) FROM hits")
-        result = cursor.fetchone()
-        stats['total_hits'] = result[0] if result else 0
-
-        # Unique users
-        cursor.execute("SELECT COUNT(DISTINCT user_id) FROM hits")
-        result = cursor.fetchone()
-        stats['unique_users'] = result[0] if result else 0
-
-        # Sessions
-        cursor.execute("SELECT COUNT(DISTINCT session_id) FROM hits")
-        result = cursor.fetchone()
-        stats['sessions'] = result[0] if result else 0
-
-        # Total revenue
-        cursor.execute("SELECT COALESCE(SUM(revenue), 0) FROM hits")
-        result = cursor.fetchone()
-        stats['total_revenue'] = result[0] if result else 0
-
-    except Exception as e:
-        st.error(f"Error getting database stats: {e}")
-        stats = {'total_hits': 0, 'unique_users': 0, 'sessions': 0, 'total_revenue': 0}
-
-    return stats
-
-
-def _get_saved_segments(cursor):
-    """Get saved segments from database"""
-    try:
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
-        if not cursor.fetchone():
-            return []
-        cursor.execute("SELECT name, description, definition FROM segments ORDER BY modified_date DESC LIMIT 20")
-        segments = []
-        for row in cursor.fetchall():
-            try:
-                definition = json.loads(row[2]) if row[2] else {}
-                segments.append({
-                    'name': row[0],
-                    'description': row[1] or '',
-                    'container_type': definition.get('container_type', 'hit'),
-                    'icon': '🎯'
-                })
-            except:
-                continue
-        return segments
-    except Exception as e:
-        return []
 
 
 def _get_database_config():
@@ -387,90 +194,6 @@ def _get_saved_segments(cursor):
         return []
 
 
-def _execute_preview_query(sql_query):
-    """Execute SQL query and return results with REAL data"""
-    try:
-        db_path = Path("data/analytics.db")
-        conn = sqlite3.connect(str(db_path))
-        cursor = conn.cursor()
-
-        # Execute the query
-        cursor.execute(sql_query)
-
-        # Get column names
-        columns = [description[0] for description in cursor.description]
-
-        # Fetch results (limit to prevent memory issues)
-        rows = cursor.fetchmany(100)
-
-        # Convert to list of dictionaries
-        result_rows = []
-        for row in rows:
-            row_dict = {}
-            for i, col in enumerate(columns):
-                # Handle different data types properly
-                value = row[i]
-                if value is None:
-                    value = ""
-                elif isinstance(value, (int, float)):
-                    value = value
-                else:
-                    value = str(value)
-                row_dict[col] = value
-            result_rows.append(row_dict)
-
-        conn.close()
-
-        return {
-            'sql_query': sql_query,
-            'rows': result_rows,
-            'columns': columns,
-            'total_count': len(result_rows),
-            'is_default': len(result_rows) == 0 or ('LIMIT 10' in sql_query and 'WHERE' not in sql_query),
-            'success': True
-        }
-
-    except Exception as e:
-        # Return default data if query fails
-        try:
-            db_path = Path("data/analytics.db")
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.cursor()
-
-            # Fallback to simple query
-            cursor.execute("SELECT * FROM hits LIMIT 10")
-            columns = [description[0] for description in cursor.description]
-            rows = cursor.fetchall()
-
-            result_rows = []
-            for row in rows:
-                row_dict = {}
-                for i, col in enumerate(columns):
-                    row_dict[col] = row[i] if row[i] is not None else ""
-                result_rows.append(row_dict)
-
-            conn.close()
-
-            return {
-                'sql_query': f"-- Error in query: {str(e)}\nSELECT * FROM hits LIMIT 10",
-                'rows': result_rows,
-                'columns': columns,
-                'total_count': len(result_rows),
-                'is_default': True,
-                'error': str(e),
-                'success': False
-            }
-        except:
-            return {
-                'sql_query': sql_query,
-                'rows': [],
-                'columns': [],
-                'total_count': 0,
-                'error': str(e),
-                'success': False
-            }
-
-
 def _render_adobe_segment_builder(config):
     """Render the segment builder with exact UI styling from screenshot"""
 
@@ -478,17 +201,13 @@ def _render_adobe_segment_builder(config):
     segment_json = json.dumps(st.session_state.segment_definition, default=str, ensure_ascii=False)
     stats_json = json.dumps(config.get('database_stats', {}), default=str)
 
-    # Pass real preview data if available
-    preview_data_for_js = st.session_state.preview_data if st.session_state.preview_data else {}
-    preview_json = json.dumps(preview_data_for_js, default=str, ensure_ascii=False)
-
     html_content = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fan - Segment Builder</title>
+    <title>Adobe Analytics Segment Builder</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -510,31 +229,12 @@ def _render_adobe_segment_builder(config):
 
         .sidebar {
             width: 280px;
-            min-width: 200px;
-            max-width: 500px;
             background: white;
             border-right: 1px solid #e9ecef;
             overflow-y: auto;
             flex-shrink: 0;
             display: flex;
             flex-direction: column;
-            position: relative;
-        }
-
-        /* ISSUE 4: Resizable sidebar */
-        .sidebar-resizer {
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 4px;
-            height: 100%;
-            background: transparent;
-            cursor: col-resize;
-            z-index: 100;
-        }
-
-        .sidebar-resizer:hover {
-            background: #007bff;
         }
 
         .sidebar-header {
@@ -553,7 +253,6 @@ def _render_adobe_segment_builder(config):
             flex: 1;
             padding: 16px;
             overflow-y: auto;
-            height: calc(100vh - 200px); /* ISSUE 3: More vertical space for components */
         }
 
         .main-canvas {
@@ -564,19 +263,17 @@ def _render_adobe_segment_builder(config):
             background: #f8f9fa;
         }
 
-        /* ISSUE 3: Space optimization - remove extra spacing */
         .canvas-header {
             background: white;
             border-bottom: 1px solid #e9ecef;
-            padding: 16px 20px; /* Reduced from 20px 24px */
+            padding: 20px 24px;
             flex-shrink: 0;
         }
 
         .canvas-content {
             flex: 1;
-            padding: 16px; /* Reduced from 24px */
+            padding: 24px;
             overflow-y: auto;
-            height: calc(100vh - 80px); /* Optimized for more space */
         }
 
         .database-overview {
@@ -712,23 +409,18 @@ def _render_adobe_segment_builder(config):
             color: white;
         }
 
-        /* ISSUE 3: Container color coding for Include/Exclude */
         .container-wrapper {
             background: white;
             border: 1px solid #e9ecef;
             border-radius: 8px;
             margin-bottom: 16px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            border-left: 4px solid #28a745; /* Default: Include = light green */
-        }
-
-        .container-wrapper.exclude {
-            border-left: 4px solid #dc3545; /* Exclude = red */
         }
 
         /* BUG FIX 6: Nested container indentation */
         .container-wrapper.nested {
             margin-left: 24px;
+            border-left: 3px solid #007bff;
             padding-left: 16px;
         }
 
@@ -901,123 +593,6 @@ def _render_adobe_segment_builder(config):
             margin-left: auto;
             margin-right: auto;
         }
-
-        /* Preview Modal Styling */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-
-        .modal-content {
-            background: white;
-            border-radius: 8px;
-            width: 90%;
-            max-width: 1000px;
-            max-height: 90vh;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
-
-        .modal-header {
-            padding: 20px;
-            border-bottom: 1px solid #e9ecef;
-            background: #f8f9fa;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .modal-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #212529;
-            margin: 0;
-        }
-
-        .modal-body {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-        }
-
-        .sql-code {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 6px;
-            padding: 16px;
-            margin-bottom: 20px;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 13px;
-            white-space: pre-wrap;
-            overflow-x: auto;
-        }
-
-        /* ISSUE 2: CSV Export button styling */
-        .export-btn {
-            background: #28a745;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin-top: 16px;
-        }
-
-        .export-btn:hover {
-            background: #1e7e34;
-        }
-
-        /* ISSUE 1: Preview table styling for real data */
-        .preview-results {
-            margin-top: 20px;
-        }
-
-        .preview-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-            margin-top: 16px;
-        }
-
-        .preview-table th {
-            background: #f8f9fa;
-            padding: 8px 12px;
-            text-align: left;
-            font-weight: 600;
-            color: #495057;
-            border-bottom: 2px solid #dee2e6;
-            font-size: 11px;
-        }
-
-        .preview-table td {
-            padding: 8px 12px;
-            border-bottom: 1px solid #dee2e6;
-            font-size: 11px;
-            max-width: 150px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .preview-table tr:hover {
-            background: #f8f9fa;
-        }
     </style>
 </head>
 <body>
@@ -1029,7 +604,6 @@ def _render_adobe_segment_builder(config):
         const config = """ + config_json + """;
         const initialSegment = """ + segment_json + """;
         const databaseStats = """ + stats_json + """;
-        const initialPreviewData = """ + preview_json + """;
 
         const operators = {
             string: ['equals', 'does not equal', 'contains', 'does not contain', 'starts with', 'ends with', 'exists', 'does not exist'],
@@ -1038,21 +612,17 @@ def _render_adobe_segment_builder(config):
 
         const generateId = () => Math.random().toString(36).substr(2, 9);
 
-        // FIXED: Rule component with working AND/OR/THEN toggle and delete
+        // BUG FIX 2: Rule component with proper delete isolation
         const Rule = ({ rule, containerIndex, ruleIndex, onUpdate, onRemove, showLogicOperator = false }) => {
             const [localValue, setLocalValue] = useState(rule.value || '');
-            const [localLogic, setLocalLogic] = useState(rule.logic || 'AND');
 
             useEffect(() => {
                 setLocalValue(rule.value || '');
-                setLocalLogic(rule.logic || 'AND');
-            }, [rule.value, rule.logic]);
+            }, [rule.value]);
 
             const handleFieldChange = (field, value) => {
                 if (field === 'value') {
                     setLocalValue(value);
-                } else if (field === 'logic') {
-                    setLocalLogic(value);
                 }
                 onUpdate(containerIndex, ruleIndex, field, value);
             };
@@ -1061,11 +631,11 @@ def _render_adobe_segment_builder(config):
                 onUpdate(containerIndex, ruleIndex, 'value', localValue);
             };
 
-            // FIXED: Working rule delete with proper isolation
+            // BUG FIX 2: Isolated rule removal with proper event handling
             const handleRemoveRule = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('Removing rule:', containerIndex, ruleIndex);
+                e.stopImmediatePropagation();
                 onRemove(containerIndex, ruleIndex);
             };
 
@@ -1075,13 +645,13 @@ def _render_adobe_segment_builder(config):
 
             return (
                 <div className="rule-container">
-                    {/* FIXED: Working AND/OR/THEN toggle that shows correct value */}
+                    {/* BUG FIX 1 & 4: Fixed AND/OR/THEN toggle with correct state display */}
                     {showLogicOperator && ruleIndex > 0 && (
                         <div className="rule-logic-operator">
                             <select
-                                value={localLogic}
+                                value={rule.logic || 'AND'}
                                 onChange={(e) => handleFieldChange('logic', e.target.value)}
-                                style={{fontSize: '12px', border: 'none', background: 'transparent', fontWeight: '600'}}
+                                style={{fontSize: '12px', border: 'none', background: 'transparent'}}
                             >
                                 <option value="AND">AND</option>
                                 <option value="OR">OR</option>
@@ -1134,7 +704,7 @@ def _render_adobe_segment_builder(config):
         };
 
         // Container component with proper nesting
-        const Container = ({ container, containerIndex, level = 0, onUpdate, onRemove, onAddRule, onAddNestedContainer, onUpdateRule, onRemoveRule }) => {
+        const Container = ({ container, containerIndex, level = 0, onUpdate, onRemove, onAddRule, onAddNestedContainer }) => {
             const [isExpanded, setIsExpanded] = useState(true);
             const [dragOver, setDragOver] = useState(false);
 
@@ -1173,7 +743,7 @@ def _render_adobe_segment_builder(config):
             };
 
             return (
-                <div className={`container-wrapper ${container.nested ? 'nested' : ''} ${!container.include ? 'exclude' : ''}`}>
+                <div className={`container-wrapper ${container.nested ? 'nested' : ''}`}>
                     <div className="container-header">
                         <div className="container-controls">
                             <button onClick={() => setIsExpanded(!isExpanded)}>
@@ -1228,12 +798,12 @@ def _render_adobe_segment_builder(config):
                                 <div>
                                     {(container.rules || []).map((rule, ruleIndex) => (
                                         <Rule
-                                            key={`${rule.id}-${ruleIndex}`}
+                                            key={rule.id}
                                             rule={rule}
                                             containerIndex={containerIndex}
                                             ruleIndex={ruleIndex}
-                                            onUpdate={onUpdateRule}
-                                            onRemove={onRemoveRule}
+                                            onUpdate={onUpdate}
+                                            onRemove={onRemove}
                                             showLogicOperator={true}
                                         />
                                     ))}
@@ -1279,173 +849,13 @@ def _render_adobe_segment_builder(config):
             );
         };
 
-        // FIXED: Working preview modal with SQL generation
-        const PreviewModal = ({ isOpen, onClose, previewData }) => {
-            if (!isOpen) return null;
-
-            return (
-                <div className="modal-overlay" onClick={onClose}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h3 className="modal-title">Segment Preview: {previewData?.segment_name || 'Untitled'}</h3>
-                            <button onClick={onClose} className="btn btn-secondary">✕</button>
-                        </div>
-                        
-                        <div className="modal-body">
-                            {previewData?.sql_query && (
-                                <div>
-                                    <h4 style={{marginBottom: '8px', fontSize: '14px', fontWeight: '600'}}>
-                                        Generated SQL Query:
-                                    </h4>
-                                    <div className="sql-code">
-                                        {previewData.sql_query}
-                                    </div>
-                                </div>
-                            )}
-
-                            <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: '1fr 1fr 1fr',
-                                gap: '16px',
-                                marginBottom: '20px'
-                            }}>
-                                <div style={{
-                                    background: '#e3f2fd',
-                                    padding: '12px',
-                                    borderRadius: '6px',
-                                    textAlign: 'center'
-                                }}>
-                                    <div style={{fontSize: '18px', fontWeight: '700', color: '#1976d2'}}>
-                                        {previewData?.containers || 0}
-                                    </div>
-                                    <div style={{fontSize: '12px', color: '#6c757d'}}>Containers</div>
-                                </div>
-                                <div style={{
-                                    background: '#e8f5e8',
-                                    padding: '12px',
-                                    borderRadius: '6px',
-                                    textAlign: 'center'
-                                }}>
-                                    <div style={{fontSize: '18px', fontWeight: '700', color: '#388e3c'}}>
-                                        {previewData?.rules_total || 0}
-                                    </div>
-                                    <div style={{fontSize: '12px', color: '#6c757d'}}>Rules</div>
-                                </div>
-                                <div style={{
-                                    background: '#fff3e0',
-                                    padding: '12px',
-                                    borderRadius: '6px',
-                                    textAlign: 'center'
-                                }}>
-                                    <div style={{fontSize: '18px', fontWeight: '700', color: '#f57c00'}}>
-                                        ~100
-                                    </div>
-                                    <div style={{fontSize: '12px', color: '#6c757d'}}>Max Results</div>
-                                </div>
-                            </div>
-
-                            <div style={{
-                                background: '#f8f9fa',
-                                border: '1px solid #e9ecef',
-                                borderRadius: '6px',
-                                padding: '16px',
-                                marginTop: '16px'
-                            }}>
-                                <p style={{margin: 0, color: '#6c757d', fontSize: '14px'}}>
-                                    💡 <strong>Note:</strong> This preview shows the generated SQL query and segment structure. 
-                                    To see actual data results, the query will be executed against your SQLite database 
-                                    with {databaseStats.total_hits?.toLocaleString() || '500K+'} hits.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
         const AdobeSegmentBuilder = () => {
             const [segmentDefinition, setSegmentDefinition] = useState(initialSegment);
             const [searchQuery, setSearchQuery] = useState('');
             const [activeTab, setActiveTab] = useState('dimensions');
             const [isPreviewOpen, setIsPreviewOpen] = useState(false);
             const [isLoading, setIsLoading] = useState(false);
-            const [previewData, setPreviewData] = useState(initialPreviewData || null);
-            const [sidebarWidth, setSidebarWidth] = useState(280);
-            const [isResizing, setIsResizing] = useState(false);
-
-            // Initialize with real preview data if available
-            useEffect(() => {
-                if (initialPreviewData && Object.keys(initialPreviewData).length > 0) {
-                    setPreviewData(initialPreviewData);
-                }
-            }, []);
-
-            // ISSUE 4: Sidebar resizing functionality
-            const handleMouseDown = (e) => {
-                setIsResizing(true);
-                e.preventDefault();
-            };
-
-            const handleMouseMove = (e) => {
-                if (!isResizing) return;
-                const newWidth = Math.min(Math.max(e.clientX, 200), 500);
-                setSidebarWidth(newWidth);
-            };
-
-            const handleMouseUp = () => {
-                setIsResizing(false);
-            };
-
-            useEffect(() => {
-                if (isResizing) {
-                    document.addEventListener('mousemove', handleMouseMove);
-                    document.addEventListener('mouseup', handleMouseUp);
-                    return () => {
-                        document.removeEventListener('mousemove', handleMouseMove);
-                        document.removeEventListener('mouseup', handleMouseUp);
-                    };
-                }
-            }, [isResizing]);
-
-            // URGENT FIX: Auto-execute preview with REAL data from backend
-            useEffect(() => {
-                const executePreview = () => {
-                    try {
-                        const sqlQuery = generateSQLFromSegment(segmentDefinition);
-                        
-                        // Store preview request in Streamlit session state for immediate execution
-                        window.parent.postMessage({
-                            type: 'streamlit:setComponentValue',
-                            value: {
-                                type: 'segmentPreview',
-                                sql: sqlQuery,
-                                segment: segmentDefinition,
-                                executeNow: true,
-                                timestamp: Date.now()
-                            }
-                        }, '*');
-                        
-                        // Also set local preview data for immediate display
-                        setPreviewData({
-                            sql_query: sqlQuery,
-                            segment_name: segmentDefinition.name,
-                            containers: segmentDefinition.containers?.length || 0,
-                            rules_total: segmentDefinition.containers?.reduce((acc, container) => 
-                                acc + (container.rules?.length || 0), 0) || 0,
-                            rows: initialPreviewData?.rows || [],
-                            columns: initialPreviewData?.columns || [],
-                            is_default: (!segmentDefinition.containers?.length || 
-                                       !segmentDefinition.containers?.some(c => c.rules?.length > 0))
-                        });
-                        
-                    } catch (error) {
-                        console.error('Preview error:', error);
-                    }
-                };
-
-                // Execute preview when segment changes
-                executePreview();
-            }, [segmentDefinition]);
+            const [previewData, setPreviewData] = useState(null);
 
             // BUG FIX 5: Listen for component add events
             useEffect(() => {
@@ -1617,252 +1027,21 @@ def _render_adobe_segment_builder(config):
                 setTimeout(() => setIsLoading(false), 1000);
             };
 
-            // FIXED: Working preview with actual SQL generation and execution
             const previewSegment = () => {
                 setIsLoading(true);
-                
-                try {
-                    // Generate SQL from segment definition
-                    const sqlQuery = generateSQLFromSegment(segmentDefinition);
-                    
-                    // Create preview data structure
-                    const previewData = {
-                        sql_query: sqlQuery,
-                        segment_name: segmentDefinition.name,
-                        containers: segmentDefinition.containers?.length || 0,
-                        rules_total: segmentDefinition.containers?.reduce((acc, container) => 
-                            acc + (container.rules?.length || 0), 0) || 0
-                    };
-                    
-                    setPreviewData(previewData);
-                    setIsPreviewOpen(true);
-                    
-                    // Send to parent for actual database execution
-                    window.parent.postMessage({
-                        type: 'segmentPreview',
-                        segment: segmentDefinition,
-                        sql: sqlQuery
-                    }, '*');
-                    
-                } catch (error) {
-                    console.error('Preview error:', error);
-                    setPreviewData({
-                        sql_query: '-- Error generating SQL',
-                        error: error.message
-                    });
-                    setIsPreviewOpen(true);
-                }
-                
-                setTimeout(() => setIsLoading(false), 1000);
-            };
-
-            // ISSUE 2: Fixed SQL generation for hit/visit/visitor levels with NESTED SUBQUERIES
-            const generateSQLFromSegment = (segment) => {
-                try {
-                    const containers = segment.containers || [];
-                    
-                    if (containers.length === 0) {
-                        return "SELECT * FROM hits LIMIT 10";
-                    }
-                    
-                    // Determine primary container type
-                    const containerTypes = containers.map(c => c.type || 'hit');
-                    const hasVisitor = containerTypes.includes('visitor');
-                    const hasVisit = containerTypes.includes('visit');
-                    const hasHit = containerTypes.includes('hit');
-                    
-                    // Main query structure based on highest level
-                    let mainTable, mainIdField, joinClauses = "";
-                    
-                    if (hasVisitor) {
-                        mainTable = "users";
-                        mainIdField = "user_id";
-                        if (hasVisit || hasHit) {
-                            joinClauses = " LEFT JOIN sessions s ON users.user_id = s.user_id LEFT JOIN hits h ON s.session_id = h.session_id";
-                        }
-                    } else if (hasVisit) {
-                        mainTable = "sessions";
-                        mainIdField = "session_id";
-                        if (hasHit) {
-                            joinClauses = " LEFT JOIN hits h ON sessions.session_id = h.session_id";
-                        }
-                    } else {
-                        mainTable = "hits";
-                        mainIdField = "hit_id";
-                    }
-                    
-                    const containerSubqueries = [];
-                    
-                    containers.forEach((container, containerIndex) => {
-                        const rules = container.rules || [];
-                        const containerType = container.type || 'hit';
-                        
-                        if (rules.length === 0) return;
-                        
-                        // Build rule conditions
-                        const ruleClauses = [];
-                        
-                        rules.forEach((rule, ruleIndex) => {
-                            const field = rule.field;
-                            const operator = rule.operator || 'equals';
-                            const value = rule.value;
-                            const dataType = rule.dataType || 'string';
-                            
-                            if (!field || !value) return;
-                            
-                            let condition = '';
-                            let tablePrefix = '';
-                            
-                            // Determine table prefix based on field and container type
-                            if (containerType === 'hit' || ['page_url', 'page_title', 'page_type', 'device_type', 'browser_name', 'revenue', 'products_viewed', 'cart_additions', 'time_on_page', 'bounce'].includes(field)) {
-                                tablePrefix = hasHit ? 'h.' : '';
-                            } else if (containerType === 'visit' || ['session_id'].includes(field)) {
-                                tablePrefix = hasVisit ? 's.' : '';
-                            } else if (containerType === 'visitor' || ['user_id'].includes(field)) {
-                                tablePrefix = hasVisitor ? 'users.' : '';
-                            }
-                            
-                            if (dataType === 'string') {
-                                const escapedValue = value.replace(/'/g, "''");
-                                
-                                switch (operator) {
-                                    case 'equals':
-                                        condition = `LOWER(${tablePrefix}${field}) = LOWER('${escapedValue}')`;
-                                        break;
-                                    case 'does not equal':
-                                        condition = `LOWER(${tablePrefix}${field}) != LOWER('${escapedValue}')`;
-                                        break;
-                                    case 'contains':
-                                        condition = `LOWER(${tablePrefix}${field}) LIKE LOWER('%${escapedValue}%')`;
-                                        break;
-                                    case 'does not contain':
-                                        condition = `LOWER(${tablePrefix}${field}) NOT LIKE LOWER('%${escapedValue}%')`;
-                                        break;
-                                    case 'starts with':
-                                        condition = `LOWER(${tablePrefix}${field}) LIKE LOWER('${escapedValue}%')`;
-                                        break;
-                                    case 'ends with':
-                                        condition = `LOWER(${tablePrefix}${field}) LIKE LOWER('%${escapedValue}')`;
-                                        break;
-                                    case 'exists':
-                                        condition = `${tablePrefix}${field} IS NOT NULL AND ${tablePrefix}${field} != ''`;
-                                        break;
-                                    case 'does not exist':
-                                        condition = `(${tablePrefix}${field} IS NULL OR ${tablePrefix}${field} = '')`;
-                                        break;
-                                    default:
-                                        condition = `LOWER(${tablePrefix}${field}) = LOWER('${escapedValue}')`;
-                                }
-                            } else { // number
-                                const numValue = parseFloat(value) || 0;
-                                
-                                switch (operator) {
-                                    case 'equals':
-                                        condition = `${tablePrefix}${field} = ${numValue}`;
-                                        break;
-                                    case 'does not equal':
-                                        condition = `${tablePrefix}${field} != ${numValue}`;
-                                        break;
-                                    case 'is greater than':
-                                        condition = `${tablePrefix}${field} > ${numValue}`;
-                                        break;
-                                    case 'is less than':
-                                        condition = `${tablePrefix}${field} < ${numValue}`;
-                                        break;
-                                    case 'is greater than or equal to':
-                                        condition = `${tablePrefix}${field} >= ${numValue}`;
-                                        break;
-                                    case 'is less than or equal to':
-                                        condition = `${tablePrefix}${field} <= ${numValue}`;
-                                        break;
-                                    case 'exists':
-                                        condition = `${tablePrefix}${field} IS NOT NULL`;
-                                        break;
-                                    case 'does not exist':
-                                        condition = `${tablePrefix}${field} IS NULL`;
-                                        break;
-                                    default:
-                                        condition = `${tablePrefix}${field} = ${numValue}`;
-                                }
-                            }
-                            
-                            if (condition) {
-                                const ruleLogic = rule.logic || 'AND';
-                                if (ruleIndex > 0) {
-                                    ruleClauses.push(`${ruleLogic} ${condition}`);
-                                } else {
-                                    ruleClauses.push(condition);
-                                }
-                            }
-                        });
-                        
-                        if (ruleClauses.length > 0) {
-                            // Create subquery for nested containers
-                            let subqueryTable, subqueryIdField, subqueryJoins = "";
-                            
-                            if (containerType === 'visitor') {
-                                subqueryTable = "users";
-                                subqueryIdField = "user_id";
-                                if (rules.some(r => ['page_url', 'device_type', 'browser_name'].includes(r.field))) {
-                                    subqueryJoins = " LEFT JOIN sessions s ON users.user_id = s.user_id LEFT JOIN hits h ON s.session_id = h.session_id";
-                                }
-                            } else if (containerType === 'visit') {
-                                subqueryTable = "sessions";
-                                subqueryIdField = "session_id";
-                                if (rules.some(r => ['page_url', 'device_type', 'browser_name'].includes(r.field))) {
-                                    subqueryJoins = " LEFT JOIN hits h ON sessions.session_id = h.session_id";
-                                }
-                            } else {
-                                subqueryTable = "hits";
-                                subqueryIdField = "hit_id";
-                            }
-                            
-                            const whereClause = ruleClauses.join(' ');
-                            
-                            // Create the subquery
-                            const subquery = `SELECT DISTINCT ${subqueryIdField} FROM ${subqueryTable}${subqueryJoins} WHERE ${whereClause}`;
-                            
-                            // Create IN/NOT IN clause based on include/exclude
-                            const inClause = container.include ? 'IN' : 'NOT IN';
-                            
-                            // Map to main table ID field
-                            let mainIdFieldForSubquery = mainIdField;
-                            if (containerType === 'visitor' && mainTable !== 'users') {
-                                mainIdFieldForSubquery = hasVisitor ? 'users.user_id' : (hasVisit ? 's.user_id' : 'h.user_id');
-                            } else if (containerType === 'visit' && mainTable !== 'sessions') {
-                                mainIdFieldForSubquery = hasVisit ? 'sessions.session_id' : 'h.session_id';
-                            } else if (containerType === 'hit' && mainTable !== 'hits') {
-                                mainIdFieldForSubquery = 'h.hit_id';
-                            }
-                            
-                            containerSubqueries.push(`${mainIdFieldForSubquery} ${inClause} (${subquery})`);
-                        }
-                    });
-                    
-                    if (containerSubqueries.length === 0) {
-                        return `SELECT * FROM ${mainTable}${joinClauses} LIMIT 10`;
-                    }
-                    
-                    const segmentLogic = segment.logic || 'and';
-                    const whereClause = containerSubqueries.join(` ${segmentLogic.toUpperCase()} `);
-                    
-                    return `SELECT * FROM ${mainTable}${joinClauses} WHERE ${whereClause} LIMIT 100`;
-                    
-                } catch (error) {
-                    return `-- Error generating SQL: ${error.message}\nSELECT * FROM hits LIMIT 10`;
-                }
+                setIsPreviewOpen(true);
+                window.parent.postMessage({
+                    type: 'segmentPreview',
+                    segment: segmentDefinition
+                }, '*');
+                setTimeout(() => setIsLoading(false), 2000);
             };
 
             return (
                 <div className="segment-builder">
-                    <div className="sidebar" style={{width: sidebarWidth}}>
-                        {/* ISSUE 4: Resizable sidebar handle */}
-                        <div 
-                            className="sidebar-resizer"
-                            onMouseDown={handleMouseDown}
-                        ></div>
+                    <div className="sidebar">
                         <div className="sidebar-header">
-                            <h1 className="sidebar-title">Fan - Segment Components</h1>
+                            <h1 className="sidebar-title">Segment Components</h1>
 
                             {databaseStats.total_hits && (
                                 <div className="database-overview">
@@ -1967,8 +1146,6 @@ def _render_adobe_segment_builder(config):
                                                 onRemove={removeContainer}
                                                 onAddRule={addRule}
                                                 onAddNestedContainer={addNestedContainer}
-                                                onUpdateRule={updateRule}
-                                                onRemoveRule={removeRule}
                                             />
                                         </div>
                                     ))}
@@ -1992,13 +1169,6 @@ def _render_adobe_segment_builder(config):
                             )}
                         </div>
                     </div>
-
-                    {/* FIXED: Working preview modal */}
-                    <PreviewModal
-                        isOpen={isPreviewOpen}
-                        onClose={() => setIsPreviewOpen(false)}
-                        previewData={previewData}
-                    />
                 </div>
             );
         };
@@ -2009,18 +1179,7 @@ def _render_adobe_segment_builder(config):
 </html>
     """
 
-    # Render the component and handle return value
-    component_value = components.html(html_content, height=800, scrolling=False)
-
-    # Handle preview requests from component
-    if component_value and isinstance(component_value, dict):
-        if component_value.get('type') == 'segmentPreview':
-            sql_query = component_value.get('sql', '')
-            if sql_query:
-                # Execute the preview query
-                preview_result = _execute_preview_query(sql_query)
-                st.session_state.preview_data = preview_result
-                st.rerun()  # Refresh to show new data
+    components.html(html_content, height=800, scrolling=False)
 
 
 def _save_segment(segment):
