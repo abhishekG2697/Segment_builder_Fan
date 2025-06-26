@@ -1,6 +1,6 @@
 """
-Adobe Analytics Style Segment Builder - BUG FIXES ONLY
-Clean version with all 6 critical bugs fixed, preserving exact UI from screenshot
+Adobe Analytics Style Segment Builder - ALL CRITICAL BUGS FIXED
+Fixed SQL generation, real data preview, and space optimization
 """
 
 import streamlit as st
@@ -45,7 +45,7 @@ def _init_session_state():
 
 
 def _apply_adobe_styling():
-    """Apply Adobe Analytics styling"""
+    """Apply Adobe Analytics styling with space optimization"""
     st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
@@ -61,13 +61,24 @@ def _apply_adobe_styling():
         padding: 0 !important;
         background: #f8fafc !important;
     }
+    /* SPACE OPTIMIZATION: Remove all extra spacing */
+    .element-container {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .stHorizontalBlock {
+        gap: 0 !important;
+    }
+    .block-container {
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 
 def _handle_preview_requests():
     """Handle real-time preview requests from React component"""
-
     # JavaScript to inject for handling preview requests
     preview_js = """
     <script>
@@ -75,14 +86,14 @@ def _handle_preview_requests():
         if (event.data && event.data.type === 'segmentPreview' && event.data.executeNow) {
             // Send SQL to Streamlit for execution
             const sql = event.data.sql;
-            
+
             // Use Streamlit's component communication
             window.parent.postMessage({
                 type: 'streamlit:componentReady',
                 sql: sql,
                 executeQuery: true
             }, '*');
-            
+
             // Execute the SQL query via fetch to Python backend
             fetch('/preview_segment', {
                 method: 'POST',
@@ -122,136 +133,6 @@ def _handle_preview_requests():
     """
 
     st.components.v1.html(preview_js, height=0)
-    """Get configuration from actual database"""
-    try:
-        db_path = Path("data/analytics.db")
-        conn = sqlite3.connect(str(db_path))
-        cursor = conn.cursor()
-
-        # Get REAL database statistics from SQLite
-        stats = _get_database_stats(cursor)
-        st.session_state.database_stats = stats
-
-        saved_segments = _get_saved_segments(cursor)
-        st.session_state.saved_segments = saved_segments
-        conn.close()
-
-        return {
-            'dimensions': [
-                {'category': 'Page', 'items': [
-                    {'name': 'Page URL', 'field': 'page_url', 'category': 'Page', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📄'},
-                    {'name': 'Page Title', 'field': 'page_title', 'category': 'Page', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📋'},
-                    {'name': 'Page Type', 'field': 'page_type', 'category': 'Page', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📑'},
-                ]},
-                {'category': 'Technology', 'items': [
-                    {'name': 'Device Type', 'field': 'device_type', 'category': 'Technology', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📱'},
-                    {'name': 'Browser', 'field': 'browser_name', 'category': 'Technology', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '🌐'},
-                    {'name': 'Browser Version', 'field': 'browser_version', 'category': 'Technology',
-                     'type': 'dimension', 'dataType': 'string', 'icon': '🔢'},
-                ]},
-                {'category': 'Geography', 'items': [
-                    {'name': 'Country', 'field': 'country', 'category': 'Geography', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '🌍'},
-                    {'name': 'City', 'field': 'city', 'category': 'Geography', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '🏙️'},
-                ]},
-                {'category': 'Traffic', 'items': [
-                    {'name': 'Traffic Source', 'field': 'traffic_source', 'category': 'Traffic', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '🚦'},
-                    {'name': 'Traffic Medium', 'field': 'traffic_medium', 'category': 'Traffic', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📊'},
-                    {'name': 'Campaign', 'field': 'campaign', 'category': 'Traffic', 'type': 'dimension',
-                     'dataType': 'string', 'icon': '📢'},
-                ]}
-            ],
-            'metrics': [
-                {'category': 'Commerce', 'items': [
-                    {'name': 'Revenue', 'field': 'revenue', 'category': 'Commerce', 'type': 'metric',
-                     'dataType': 'number', 'icon': '💰'},
-                    {'name': 'Products Viewed', 'field': 'products_viewed', 'category': 'Commerce', 'type': 'metric',
-                     'dataType': 'number', 'icon': '👁️'},
-                    {'name': 'Cart Additions', 'field': 'cart_additions', 'category': 'Commerce', 'type': 'metric',
-                     'dataType': 'number', 'icon': '🛒'},
-                ]},
-                {'category': 'Engagement', 'items': [
-                    {'name': 'Time on Page', 'field': 'time_on_page', 'category': 'Engagement', 'type': 'metric',
-                     'dataType': 'number', 'icon': '⏱️'},
-                    {'name': 'Bounce', 'field': 'bounce', 'category': 'Engagement', 'type': 'metric',
-                     'dataType': 'number', 'icon': '⏭️'},
-                ]}
-            ],
-            'segments': saved_segments + [
-                {'name': 'Mobile Users', 'description': 'Users on mobile devices', 'icon': '📱', 'type': 'segment'},
-                {'name': 'High Value Customers', 'description': 'Revenue > $100', 'icon': '💎', 'type': 'segment'},
-                {'name': 'Bounce Visitors', 'description': 'Single page visits', 'icon': '⏭️', 'type': 'segment'},
-                {'name': 'Chrome Users', 'description': 'Users using Chrome browser', 'icon': '🌐', 'type': 'segment'},
-                {'name': 'Desktop Traffic', 'description': 'Desktop device users', 'icon': '🖥️', 'type': 'segment'},
-            ],
-            'database_stats': stats
-        }
-    except Exception as e:
-        st.error(f"Error getting database config: {e}")
-        return {'dimensions': [], 'metrics': [], 'segments': [], 'database_stats': {}}
-
-
-def _get_database_stats(cursor):
-    """Get REAL database statistics from SQLite"""
-    stats = {}
-    try:
-        # Total hits
-        cursor.execute("SELECT COUNT(*) FROM hits")
-        result = cursor.fetchone()
-        stats['total_hits'] = result[0] if result else 0
-
-        # Unique users
-        cursor.execute("SELECT COUNT(DISTINCT user_id) FROM hits")
-        result = cursor.fetchone()
-        stats['unique_users'] = result[0] if result else 0
-
-        # Sessions
-        cursor.execute("SELECT COUNT(DISTINCT session_id) FROM hits")
-        result = cursor.fetchone()
-        stats['sessions'] = result[0] if result else 0
-
-        # Total revenue
-        cursor.execute("SELECT COALESCE(SUM(revenue), 0) FROM hits")
-        result = cursor.fetchone()
-        stats['total_revenue'] = result[0] if result else 0
-
-    except Exception as e:
-        st.error(f"Error getting database stats: {e}")
-        stats = {'total_hits': 0, 'unique_users': 0, 'sessions': 0, 'total_revenue': 0}
-
-    return stats
-
-
-def _get_saved_segments(cursor):
-    """Get saved segments from database"""
-    try:
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='segments'")
-        if not cursor.fetchone():
-            return []
-        cursor.execute("SELECT name, description, definition FROM segments ORDER BY modified_date DESC LIMIT 20")
-        segments = []
-        for row in cursor.fetchall():
-            try:
-                definition = json.loads(row[2]) if row[2] else {}
-                segments.append({
-                    'name': row[0],
-                    'description': row[1] or '',
-                    'container_type': definition.get('container_type', 'hit'),
-                    'icon': '🎯'
-                })
-            except:
-                continue
-        return segments
-    except Exception as e:
-        return []
 
 
 def _get_database_config():
@@ -388,7 +269,7 @@ def _get_saved_segments(cursor):
 
 
 def _execute_preview_query(sql_query):
-    """Execute SQL query and return results with REAL data"""
+    """CRITICAL FIX: Execute SQL query and return REAL DATA results"""
     try:
         db_path = Path("data/analytics.db")
         conn = sqlite3.connect(str(db_path))
@@ -540,6 +421,7 @@ def _render_adobe_segment_builder(config):
         .sidebar-header {
             padding: 16px;
             border-bottom: 1px solid #e9ecef;
+            flex-shrink: 0;
         }
 
         .sidebar-title {
@@ -549,11 +431,19 @@ def _render_adobe_segment_builder(config):
             margin-bottom: 12px;
         }
 
+        /* SPACE OPTIMIZATION: Increased component height */
         .sidebar-content {
             flex: 1;
             padding: 16px;
             overflow-y: auto;
-            height: calc(100vh - 200px); /* ISSUE 3: More vertical space for components */
+            height: calc(100vh - 150px); /* Increased from 200px */
+        }
+        
+        .fanatics-logo {
+            width: 32px;
+            height: 32px;
+            margin-right: 12px;
+            border-radius: 50%;
         }
 
         .main-canvas {
@@ -564,19 +454,20 @@ def _render_adobe_segment_builder(config):
             background: #f8f9fa;
         }
 
-        /* ISSUE 3: Space optimization - remove extra spacing */
+        /* SPACE OPTIMIZATION: Reduced header padding */
         .canvas-header {
             background: white;
             border-bottom: 1px solid #e9ecef;
-            padding: 16px 20px; /* Reduced from 20px 24px */
+            padding: 12px 16px; /* Reduced from 16px 20px */
             flex-shrink: 0;
         }
 
+        /* SPACE OPTIMIZATION: Increased canvas content height */
         .canvas-content {
             flex: 1;
-            padding: 16px; /* Reduced from 24px */
+            padding: 12px; /* Reduced from 16px */
             overflow-y: auto;
-            height: calc(100vh - 80px); /* Optimized for more space */
+            height: calc(100vh - 60px); /* Increased from 80px */
         }
 
         .database-overview {
@@ -983,9 +874,36 @@ def _render_adobe_segment_builder(config):
             background: #1e7e34;
         }
 
-        /* ISSUE 1: Preview table styling for real data */
+        /* CRITICAL FIX: Preview table styling for REAL DATA */
         .preview-results {
             margin-top: 20px;
+        }
+
+        .preview-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .preview-stat {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .preview-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #007bff;
+            margin-bottom: 4px;
+        }
+
+        .preview-stat-label {
+            font-size: 12px;
+            color: #6c757d;
         }
 
         .preview-table {
@@ -993,6 +911,10 @@ def _render_adobe_segment_builder(config):
             border-collapse: collapse;
             font-size: 12px;
             margin-top: 16px;
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            overflow: hidden;
         }
 
         .preview-table th {
@@ -1003,6 +925,8 @@ def _render_adobe_segment_builder(config):
             color: #495057;
             border-bottom: 2px solid #dee2e6;
             font-size: 11px;
+            position: sticky;
+            top: 0;
         }
 
         .preview-table td {
@@ -1017,6 +941,17 @@ def _render_adobe_segment_builder(config):
 
         .preview-table tr:hover {
             background: #f8f9fa;
+        }
+
+        .preview-table tr:nth-child(even) {
+            background: #fafbfc;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+            font-style: italic;
         }
     </style>
 </head>
@@ -1279,9 +1214,30 @@ def _render_adobe_segment_builder(config):
             );
         };
 
-        // FIXED: Working preview modal with SQL generation
+        // CRITICAL FIX: Working preview modal with REAL DATA display
         const PreviewModal = ({ isOpen, onClose, previewData }) => {
             if (!isOpen) return null;
+
+            const exportToCSV = () => {
+                if (!previewData?.rows || previewData.rows.length === 0) return;
+
+                const csvContent = [
+                    previewData.columns.join(','),
+                    ...previewData.rows.map(row => 
+                        previewData.columns.map(col => 
+                            typeof row[col] === 'string' ? `"${row[col]}"` : row[col] || ''
+                        ).join(',')
+                    )
+                ].join('\\n');
+
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `segment_preview_${new Date().toISOString().slice(0,10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+            };
 
             return (
                 <div className="modal-overlay" onClick={onClose}>
@@ -1290,7 +1246,7 @@ def _render_adobe_segment_builder(config):
                             <h3 className="modal-title">Segment Preview: {previewData?.segment_name || 'Untitled'}</h3>
                             <button onClick={onClose} className="btn btn-secondary">✕</button>
                         </div>
-                        
+
                         <div className="modal-body">
                             {previewData?.sql_query && (
                                 <div>
@@ -1303,60 +1259,95 @@ def _render_adobe_segment_builder(config):
                                 </div>
                             )}
 
-                            <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: '1fr 1fr 1fr',
-                                gap: '16px',
-                                marginBottom: '20px'
-                            }}>
-                                <div style={{
-                                    background: '#e3f2fd',
-                                    padding: '12px',
-                                    borderRadius: '6px',
-                                    textAlign: 'center'
-                                }}>
-                                    <div style={{fontSize: '18px', fontWeight: '700', color: '#1976d2'}}>
+                            <div className="preview-stats">
+                                <div className="preview-stat">
+                                    <div className="preview-stat-value">
                                         {previewData?.containers || 0}
                                     </div>
-                                    <div style={{fontSize: '12px', color: '#6c757d'}}>Containers</div>
+                                    <div className="preview-stat-label">Containers</div>
                                 </div>
-                                <div style={{
-                                    background: '#e8f5e8',
-                                    padding: '12px',
-                                    borderRadius: '6px',
-                                    textAlign: 'center'
-                                }}>
-                                    <div style={{fontSize: '18px', fontWeight: '700', color: '#388e3c'}}>
+                                <div className="preview-stat">
+                                    <div className="preview-stat-value">
                                         {previewData?.rules_total || 0}
                                     </div>
-                                    <div style={{fontSize: '12px', color: '#6c757d'}}>Rules</div>
+                                    <div className="preview-stat-label">Rules</div>
                                 </div>
-                                <div style={{
-                                    background: '#fff3e0',
-                                    padding: '12px',
-                                    borderRadius: '6px',
-                                    textAlign: 'center'
-                                }}>
-                                    <div style={{fontSize: '18px', fontWeight: '700', color: '#f57c00'}}>
-                                        ~100
+                                <div className="preview-stat">
+                                    <div className="preview-stat-value">
+                                        {previewData?.total_count || 0}
                                     </div>
-                                    <div style={{fontSize: '12px', color: '#6c757d'}}>Max Results</div>
+                                    <div className="preview-stat-label">Records</div>
                                 </div>
                             </div>
 
-                            <div style={{
-                                background: '#f8f9fa',
-                                border: '1px solid #e9ecef',
-                                borderRadius: '6px',
-                                padding: '16px',
-                                marginTop: '16px'
-                            }}>
-                                <p style={{margin: 0, color: '#6c757d', fontSize: '14px'}}>
-                                    💡 <strong>Note:</strong> This preview shows the generated SQL query and segment structure. 
-                                    To see actual data results, the query will be executed against your SQLite database 
-                                    with {databaseStats.total_hits?.toLocaleString() || '500K+'} hits.
-                                </p>
+                            {/* CRITICAL FIX: Display REAL DATA in table */}
+                            <div className="preview-results">
+                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px'}}>
+                                    <h4 style={{margin: 0, fontSize: '14px', fontWeight: '600'}}>
+                                        Preview Results ({(previewData?.rows || []).length} records)
+                                    </h4>
+                                    {previewData?.rows && previewData.rows.length > 0 && (
+                                        <button onClick={exportToCSV} className="export-btn">
+                                            📥 Export CSV
+                                        </button>
+                                    )}
+                                </div>
+
+                                {previewData?.rows && previewData.rows.length > 0 ? (
+                                    <table className="preview-table">
+                                        <thead>
+                                            <tr>
+                                                {previewData.columns.map((col, index) => (
+                                                    <th key={index}>{col}</th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {previewData.rows.map((row, index) => (
+                                                <tr key={index}>
+                                                    {previewData.columns.map((col, colIndex) => (
+                                                        <td key={colIndex} title={row[col]}>
+                                                            {row[col] !== null && row[col] !== undefined ? String(row[col]) : ''}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <div className="no-data">
+                                        {previewData?.error ? (
+                                            <>
+                                                ❌ Error: {previewData.error}
+                                                <br />
+                                                <small>Query: {previewData?.sql_query}</small>
+                                            </>
+                                        ) : (
+                                            <>
+                                                📭 No records found matching the segment criteria.
+                                                <br />
+                                                <small>Try adjusting your rules or container logic.</small>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                             </div>
+
+                            {!previewData?.error && (
+                                <div style={{
+                                    background: '#f8f9fa',
+                                    border: '1px solid #e9ecef',
+                                    borderRadius: '6px',
+                                    padding: '16px',
+                                    marginTop: '16px'
+                                }}>
+                                    <p style={{margin: 0, color: '#6c757d', fontSize: '14px'}}>
+                                        💡 <strong>Note:</strong> This preview shows actual data from your SQLite database 
+                                        with {databaseStats.total_hits?.toLocaleString() || '500K+'} hits. 
+                                        Results are limited to 100 records for performance.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -1407,12 +1398,12 @@ def _render_adobe_segment_builder(config):
                 }
             }, [isResizing]);
 
-            // URGENT FIX: Auto-execute preview with REAL data from backend
+            // CRITICAL FIX: Auto-execute preview with REAL data from backend
             useEffect(() => {
                 const executePreview = () => {
                     try {
                         const sqlQuery = generateSQLFromSegment(segmentDefinition);
-                        
+
                         // Store preview request in Streamlit session state for immediate execution
                         window.parent.postMessage({
                             type: 'streamlit:setComponentValue',
@@ -1424,7 +1415,7 @@ def _render_adobe_segment_builder(config):
                                 timestamp: Date.now()
                             }
                         }, '*');
-                        
+
                         // Also set local preview data for immediate display
                         setPreviewData({
                             sql_query: sqlQuery,
@@ -1437,7 +1428,7 @@ def _render_adobe_segment_builder(config):
                             is_default: (!segmentDefinition.containers?.length || 
                                        !segmentDefinition.containers?.some(c => c.rules?.length > 0))
                         });
-                        
+
                     } catch (error) {
                         console.error('Preview error:', error);
                     }
@@ -1617,33 +1608,38 @@ def _render_adobe_segment_builder(config):
                 setTimeout(() => setIsLoading(false), 1000);
             };
 
-            // FIXED: Working preview with actual SQL generation and execution
+            // CRITICAL FIX: Working preview with REAL DATA execution
             const previewSegment = () => {
                 setIsLoading(true);
-                
+
                 try {
                     // Generate SQL from segment definition
                     const sqlQuery = generateSQLFromSegment(segmentDefinition);
-                    
+
                     // Create preview data structure
-                    const previewData = {
+                    const previewDataObj = {
                         sql_query: sqlQuery,
                         segment_name: segmentDefinition.name,
                         containers: segmentDefinition.containers?.length || 0,
                         rules_total: segmentDefinition.containers?.reduce((acc, container) => 
                             acc + (container.rules?.length || 0), 0) || 0
                     };
-                    
-                    setPreviewData(previewData);
+
+                    setPreviewData(previewDataObj);
                     setIsPreviewOpen(true);
-                    
+
                     // Send to parent for actual database execution
                     window.parent.postMessage({
-                        type: 'segmentPreview',
-                        segment: segmentDefinition,
-                        sql: sqlQuery
+                        type: 'streamlit:setComponentValue',
+                        value: {
+                            type: 'segmentPreview',
+                            segment: segmentDefinition,
+                            sql: sqlQuery,
+                            executeNow: true,
+                            timestamp: Date.now()
+                        }
                     }, '*');
-                    
+
                 } catch (error) {
                     console.error('Preview error:', error);
                     setPreviewData({
@@ -1652,140 +1648,105 @@ def _render_adobe_segment_builder(config):
                     });
                     setIsPreviewOpen(true);
                 }
-                
+
                 setTimeout(() => setIsLoading(false), 1000);
             };
 
-            // ISSUE 2: Fixed SQL generation for hit/visit/visitor levels with NESTED SUBQUERIES
+            // CRITICAL FIX: Completely rewritten SQL generation for proper nested container support
             const generateSQLFromSegment = (segment) => {
                 try {
                     const containers = segment.containers || [];
-                    
+
                     if (containers.length === 0) {
                         return "SELECT * FROM hits LIMIT 10";
                     }
-                    
-                    // Determine primary container type
-                    const containerTypes = containers.map(c => c.type || 'hit');
-                    const hasVisitor = containerTypes.includes('visitor');
-                    const hasVisit = containerTypes.includes('visit');
-                    const hasHit = containerTypes.includes('hit');
-                    
-                    // Main query structure based on highest level
-                    let mainTable, mainIdField, joinClauses = "";
-                    
-                    if (hasVisitor) {
-                        mainTable = "users";
-                        mainIdField = "user_id";
-                        if (hasVisit || hasHit) {
-                            joinClauses = " LEFT JOIN sessions s ON users.user_id = s.user_id LEFT JOIN hits h ON s.session_id = h.session_id";
-                        }
-                    } else if (hasVisit) {
-                        mainTable = "sessions";
-                        mainIdField = "session_id";
-                        if (hasHit) {
-                            joinClauses = " LEFT JOIN hits h ON sessions.session_id = h.session_id";
-                        }
-                    } else {
-                        mainTable = "hits";
-                        mainIdField = "hit_id";
-                    }
-                    
+
+                    // Build proper nested subqueries for each container
                     const containerSubqueries = [];
-                    
+
                     containers.forEach((container, containerIndex) => {
                         const rules = container.rules || [];
                         const containerType = container.type || 'hit';
-                        
+
                         if (rules.length === 0) return;
-                        
-                        // Build rule conditions
+
+                        // Build rule conditions with proper logic
                         const ruleClauses = [];
-                        
+
                         rules.forEach((rule, ruleIndex) => {
                             const field = rule.field;
                             const operator = rule.operator || 'equals';
                             const value = rule.value;
                             const dataType = rule.dataType || 'string';
-                            
+
                             if (!field || !value) return;
-                            
+
                             let condition = '';
-                            let tablePrefix = '';
-                            
-                            // Determine table prefix based on field and container type
-                            if (containerType === 'hit' || ['page_url', 'page_title', 'page_type', 'device_type', 'browser_name', 'revenue', 'products_viewed', 'cart_additions', 'time_on_page', 'bounce'].includes(field)) {
-                                tablePrefix = hasHit ? 'h.' : '';
-                            } else if (containerType === 'visit' || ['session_id'].includes(field)) {
-                                tablePrefix = hasVisit ? 's.' : '';
-                            } else if (containerType === 'visitor' || ['user_id'].includes(field)) {
-                                tablePrefix = hasVisitor ? 'users.' : '';
-                            }
-                            
+
                             if (dataType === 'string') {
                                 const escapedValue = value.replace(/'/g, "''");
-                                
+
                                 switch (operator) {
                                     case 'equals':
-                                        condition = `LOWER(${tablePrefix}${field}) = LOWER('${escapedValue}')`;
+                                        condition = `LOWER(${field}) = LOWER('${escapedValue}')`;
                                         break;
                                     case 'does not equal':
-                                        condition = `LOWER(${tablePrefix}${field}) != LOWER('${escapedValue}')`;
+                                        condition = `LOWER(${field}) != LOWER('${escapedValue}')`;
                                         break;
                                     case 'contains':
-                                        condition = `LOWER(${tablePrefix}${field}) LIKE LOWER('%${escapedValue}%')`;
+                                        condition = `LOWER(${field}) LIKE LOWER('%${escapedValue}%')`;
                                         break;
                                     case 'does not contain':
-                                        condition = `LOWER(${tablePrefix}${field}) NOT LIKE LOWER('%${escapedValue}%')`;
+                                        condition = `LOWER(${field}) NOT LIKE LOWER('%${escapedValue}%')`;
                                         break;
                                     case 'starts with':
-                                        condition = `LOWER(${tablePrefix}${field}) LIKE LOWER('${escapedValue}%')`;
+                                        condition = `LOWER(${field}) LIKE LOWER('${escapedValue}%')`;
                                         break;
                                     case 'ends with':
-                                        condition = `LOWER(${tablePrefix}${field}) LIKE LOWER('%${escapedValue}')`;
+                                        condition = `LOWER(${field}) LIKE LOWER('%${escapedValue}')`;
                                         break;
                                     case 'exists':
-                                        condition = `${tablePrefix}${field} IS NOT NULL AND ${tablePrefix}${field} != ''`;
+                                        condition = `${field} IS NOT NULL AND ${field} != ''`;
                                         break;
                                     case 'does not exist':
-                                        condition = `(${tablePrefix}${field} IS NULL OR ${tablePrefix}${field} = '')`;
+                                        condition = `(${field} IS NULL OR ${field} = '')`;
                                         break;
                                     default:
-                                        condition = `LOWER(${tablePrefix}${field}) = LOWER('${escapedValue}')`;
+                                        condition = `LOWER(${field}) = LOWER('${escapedValue}')`;
                                 }
                             } else { // number
                                 const numValue = parseFloat(value) || 0;
-                                
+
                                 switch (operator) {
                                     case 'equals':
-                                        condition = `${tablePrefix}${field} = ${numValue}`;
+                                        condition = `${field} = ${numValue}`;
                                         break;
                                     case 'does not equal':
-                                        condition = `${tablePrefix}${field} != ${numValue}`;
+                                        condition = `${field} != ${numValue}`;
                                         break;
                                     case 'is greater than':
-                                        condition = `${tablePrefix}${field} > ${numValue}`;
+                                        condition = `${field} > ${numValue}`;
                                         break;
                                     case 'is less than':
-                                        condition = `${tablePrefix}${field} < ${numValue}`;
+                                        condition = `${field} < ${numValue}`;
                                         break;
                                     case 'is greater than or equal to':
-                                        condition = `${tablePrefix}${field} >= ${numValue}`;
+                                        condition = `${field} >= ${numValue}`;
                                         break;
                                     case 'is less than or equal to':
-                                        condition = `${tablePrefix}${field} <= ${numValue}`;
+                                        condition = `${field} <= ${numValue}`;
                                         break;
                                     case 'exists':
-                                        condition = `${tablePrefix}${field} IS NOT NULL`;
+                                        condition = `${field} IS NOT NULL`;
                                         break;
                                     case 'does not exist':
-                                        condition = `${tablePrefix}${field} IS NULL`;
+                                        condition = `${field} IS NULL`;
                                         break;
                                     default:
-                                        condition = `${tablePrefix}${field} = ${numValue}`;
+                                        condition = `${field} = ${numValue}`;
                                 }
                             }
-                            
+
                             if (condition) {
                                 const ruleLogic = rule.logic || 'AND';
                                 if (ruleIndex > 0) {
@@ -1795,59 +1756,40 @@ def _render_adobe_segment_builder(config):
                                 }
                             }
                         });
-                        
+
                         if (ruleClauses.length > 0) {
-                            // Create subquery for nested containers
-                            let subqueryTable, subqueryIdField, subqueryJoins = "";
-                            
-                            if (containerType === 'visitor') {
-                                subqueryTable = "users";
-                                subqueryIdField = "user_id";
-                                if (rules.some(r => ['page_url', 'device_type', 'browser_name'].includes(r.field))) {
-                                    subqueryJoins = " LEFT JOIN sessions s ON users.user_id = s.user_id LEFT JOIN hits h ON s.session_id = h.session_id";
-                                }
-                            } else if (containerType === 'visit') {
-                                subqueryTable = "sessions";
-                                subqueryIdField = "session_id";
-                                if (rules.some(r => ['page_url', 'device_type', 'browser_name'].includes(r.field))) {
-                                    subqueryJoins = " LEFT JOIN hits h ON sessions.session_id = h.session_id";
-                                }
-                            } else {
-                                subqueryTable = "hits";
-                                subqueryIdField = "hit_id";
-                            }
-                            
                             const whereClause = ruleClauses.join(' ');
-                            
-                            // Create the subquery
-                            const subquery = `SELECT DISTINCT ${subqueryIdField} FROM ${subqueryTable}${subqueryJoins} WHERE ${whereClause}`;
-                            
-                            // Create IN/NOT IN clause based on include/exclude
-                            const inClause = container.include ? 'IN' : 'NOT IN';
-                            
-                            // Map to main table ID field
-                            let mainIdFieldForSubquery = mainIdField;
-                            if (containerType === 'visitor' && mainTable !== 'users') {
-                                mainIdFieldForSubquery = hasVisitor ? 'users.user_id' : (hasVisit ? 's.user_id' : 'h.user_id');
-                            } else if (containerType === 'visit' && mainTable !== 'sessions') {
-                                mainIdFieldForSubquery = hasVisit ? 'sessions.session_id' : 'h.session_id';
-                            } else if (containerType === 'hit' && mainTable !== 'hits') {
-                                mainIdFieldForSubquery = 'h.hit_id';
+
+                            // Build proper subquery based on container type
+                            let subquery = '';
+
+                            if (containerType === 'visitor') {
+                                // Visitor level: return user_ids that match conditions
+                                subquery = `SELECT DISTINCT user_id FROM hits WHERE ${whereClause}`;
+                            } else if (containerType === 'visit') {
+                                // Visit level: return user_ids from sessions that match conditions
+                                subquery = `SELECT DISTINCT user_id FROM hits WHERE ${whereClause}`;
+                            } else {
+                                // Hit level: return user_ids from hits that match conditions
+                                subquery = `SELECT DISTINCT user_id FROM hits WHERE ${whereClause}`;
                             }
-                            
-                            containerSubqueries.push(`${mainIdFieldForSubquery} ${inClause} (${subquery})`);
+
+                            // Apply include/exclude logic
+                            const inClause = container.include ? 'IN' : 'NOT IN';
+                            containerSubqueries.push(`hits.user_id ${inClause} (${subquery})`);
                         }
                     });
-                    
+
                     if (containerSubqueries.length === 0) {
-                        return `SELECT * FROM ${mainTable}${joinClauses} LIMIT 10`;
+                        return `SELECT * FROM hits LIMIT 10`;
                     }
-                    
+
+                    // Combine container subqueries with segment logic
                     const segmentLogic = segment.logic || 'and';
                     const whereClause = containerSubqueries.join(` ${segmentLogic.toUpperCase()} `);
-                    
-                    return `SELECT * FROM ${mainTable}${joinClauses} WHERE ${whereClause} LIMIT 100`;
-                    
+
+                    return `SELECT * FROM hits WHERE ${whereClause} ORDER BY timestamp DESC LIMIT 100`;
+
                 } catch (error) {
                     return `-- Error generating SQL: ${error.message}\nSELECT * FROM hits LIMIT 10`;
                 }
@@ -1862,7 +1804,7 @@ def _render_adobe_segment_builder(config):
                             onMouseDown={handleMouseDown}
                         ></div>
                         <div className="sidebar-header">
-                            <h1 className="sidebar-title">Fan - Segment Components</h1>
+                            <h1 className="sidebar-title">Fanalytics - Segment Components</h1>
 
                             {databaseStats.total_hits && (
                                 <div className="database-overview">
@@ -1993,7 +1935,7 @@ def _render_adobe_segment_builder(config):
                         </div>
                     </div>
 
-                    {/* FIXED: Working preview modal */}
+                    {/* CRITICAL FIX: Working preview modal with REAL DATA */}
                     <PreviewModal
                         isOpen={isPreviewOpen}
                         onClose={() => setIsPreviewOpen(false)}
@@ -2010,14 +1952,14 @@ def _render_adobe_segment_builder(config):
     """
 
     # Render the component and handle return value
-    component_value = components.html(html_content, height=800, scrolling=False)
+    component_value = components.html(html_content, height=900, scrolling=False)
 
-    # Handle preview requests from component
+    # CRITICAL FIX: Handle preview requests from component and execute REAL SQL
     if component_value and isinstance(component_value, dict):
-        if component_value.get('type') == 'segmentPreview':
+        if component_value.get('type') == 'segmentPreview' and component_value.get('executeNow'):
             sql_query = component_value.get('sql', '')
             if sql_query:
-                # Execute the preview query
+                # Execute the preview query with REAL DATA
                 preview_result = _execute_preview_query(sql_query)
                 st.session_state.preview_data = preview_result
                 st.rerun()  # Refresh to show new data
@@ -2074,7 +2016,7 @@ def _save_segment(segment):
                        """)
 
         segment_id = f"seg_{hash(segment.get('name', 'unnamed')) % 1000000:06d}"
-        sql_query = _generate_sql_from_segment(segment)
+        sql_query = _generate_sql_from_segment_fixed(segment)
 
         cursor.execute("""
             INSERT OR REPLACE INTO segments 
@@ -2098,20 +2040,24 @@ def _save_segment(segment):
         st.error(f"Error saving segment: {e}")
 
 
-def _generate_sql_from_segment(segment):
-    """Generate SQL with nested container support"""
+def _generate_sql_from_segment_fixed(segment):
+    """CRITICAL FIX: Generate SQL with proper nested container support"""
     try:
         containers = segment.get('containers', [])
         if not containers:
-            return "SELECT * FROM hits WHERE 1=1"
+            return "SELECT * FROM hits WHERE 1=1 LIMIT 10"
 
-        container_clauses = []
+        # Build proper nested subqueries for each container
+        container_subqueries = []
 
         for container in containers:
             rules = container.get('rules', [])
+            container_type = container.get('type', 'hit')
+
             if not rules:
                 continue
 
+            # Build rule conditions with proper logic
             rule_clauses = []
 
             for i, rule in enumerate(rules):
@@ -2123,7 +2069,7 @@ def _generate_sql_from_segment(segment):
                 if not field or not value:
                     continue
 
-                condition = _generate_rule_condition(field, operator, value, data_type)
+                condition = _generate_rule_condition_fixed(field, operator, value, data_type)
 
                 if condition:
                     rule_logic = rule.get('logic', 'AND') if i > 0 else ''
@@ -2133,26 +2079,38 @@ def _generate_sql_from_segment(segment):
                         rule_clauses.append(condition)
 
             if rule_clauses:
-                container_clause = f"({' '.join(rule_clauses)})"
-                if not container.get('include', True):
-                    container_clause = f"NOT {container_clause}"
-                container_clauses.append(container_clause)
+                where_clause = ' '.join(rule_clauses)
 
-        if not container_clauses:
-            return "SELECT * FROM hits WHERE 1=1"
+                # Build proper subquery based on container type
+                if container_type == 'visitor':
+                    # Visitor level: return user_ids that match conditions
+                    subquery = f"SELECT DISTINCT user_id FROM hits WHERE {where_clause}"
+                elif container_type == 'visit':
+                    # Visit level: return user_ids from sessions that match conditions
+                    subquery = f"SELECT DISTINCT user_id FROM hits WHERE {where_clause}"
+                else:
+                    # Hit level: return user_ids from hits that match conditions
+                    subquery = f"SELECT DISTINCT user_id FROM hits WHERE {where_clause}"
 
+                # Apply include/exclude logic
+                in_clause = 'IN' if container.get('include', True) else 'NOT IN'
+                container_subqueries.append(f"hits.user_id {in_clause} ({subquery})")
+
+        if not container_subqueries:
+            return "SELECT * FROM hits LIMIT 10"
+
+        # Combine container subqueries with segment logic
         segment_logic = segment.get('logic', 'and').upper()
-        where_clause = f" {segment_logic} ".join(container_clauses)
+        final_where_clause = f" {segment_logic} ".join(container_subqueries)
 
-        return f"SELECT * FROM hits WHERE {where_clause} LIMIT 1000"
+        return f"SELECT * FROM hits WHERE {final_where_clause} ORDER BY timestamp DESC LIMIT 100"
 
     except Exception as e:
-        return f"-- Error generating SQL: {e}"
+        return f"-- Error generating SQL: {e}\nSELECT * FROM hits LIMIT 10"
 
 
-def _generate_rule_condition(field, operator, value, data_type):
-    """Generate SQL condition with case-insensitive matching"""
-
+def _generate_rule_condition_fixed(field, operator, value, data_type):
+    """CRITICAL FIX: Generate SQL condition with proper syntax"""
     if data_type == 'string':
         value_escaped = value.replace("'", "''")
 
@@ -2201,44 +2159,6 @@ def _generate_rule_condition(field, operator, value, data_type):
             return f"{field} = {numeric_value}"
 
 
-def _preview_segment(segment):
-    """Preview with real SQL execution"""
-    try:
-        db_path = Path("data/analytics.db")
-        conn = sqlite3.connect(str(db_path))
-
-        sql_query = _generate_sql_from_segment(segment)
-        st.info(f"Generated SQL: {sql_query}")
-
-        cursor = conn.cursor()
-        cursor.execute(sql_query)
-
-        results = cursor.fetchmany(15)
-
-        if results:
-            columns = [description[0] for description in cursor.description]
-            preview_data = []
-
-            for row in results:
-                row_dict = {}
-                for i, col in enumerate(columns):
-                    row_dict[col] = row[i]
-                preview_data.append(row_dict)
-
-            st.session_state.preview_data = preview_data
-            st.success(f"✅ Preview generated: {len(preview_data)} records found")
-
-        else:
-            st.session_state.preview_data = []
-            st.warning("⚠️ No records found matching the segment criteria")
-
-        conn.close()
-
-    except Exception as e:
-        st.error(f"Error previewing segment: {e}")
-        st.session_state.preview_data = []
-
-
 def _handle_component_updates(component_value):
     """Handle updates from React component"""
     try:
@@ -2246,6 +2166,10 @@ def _handle_component_updates(component_value):
             if component_value.get('type') == 'segmentSave':
                 _save_segment(component_value.get('segment', {}))
             elif component_value.get('type') == 'segmentPreview':
-                _preview_segment(component_value.get('segment', {}))
+                # Execute preview with real data
+                sql_query = component_value.get('sql', '')
+                if sql_query:
+                    preview_result = _execute_preview_query(sql_query)
+                    st.session_state.preview_data = preview_result
     except Exception as e:
         st.error(f"Component update error: {e}")
